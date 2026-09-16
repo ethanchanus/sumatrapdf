@@ -33,7 +33,6 @@
 #include "Theme.h"
 #include "SvgIcons.h"
 #include "Toolbar.h"
-#include "Notifications.h"
 #include "SelectionToolbar.h"
 
 // A small floating toolbar shown under/over a finished text selection with
@@ -42,9 +41,6 @@
 // availability rewritten on top of CommandAvailability.
 
 constexpr const WCHAR* kSelectionToolbarClassName = L"SumatraSelectionToolbar";
-
-static Kind kNotifCopiedToClipboard = "notifCopiedToClipboard";
-constexpr int kCopiedNotifTimeoutMs = 1500;
 
 struct SelectionToolbarButton {
     int cmdId = 0;
@@ -75,8 +71,6 @@ struct SelectionToolbar {
     Rect lastPlaced;    // last screen rect we moved the window to (avoids redundant SetWindowPos)
     Rect lastSelBounds; // last canvas-space selection bounds used for placement
     DWORD lastPositionUpdateTick = 0;
-    // an action was picked for the current selection: stay hidden until it changes
-    bool dismissed = false;
     Vec<SelectionToolbarButton> buttons;
     Func1List<MainWindow*> onWindowMoved;
 };
@@ -374,9 +368,10 @@ static VirtCtrl* MakeSelectionToolbarSeparator(int rowDy) {
 
 static bool GetSelectionEndPoint(MainWindow* win, Point& out);
 
-// The toolbar has done its job once an action is picked, so hide it until the
-// selection changes. Sticky-note placement records the selection end first,
-// because the command drops the selection.
+// Copy, highlight, underline and the other markup actions keep the text
+// selection, so leave the toolbar up with it. Sticky-note placement is the
+// exception: it records the selection end, then DeleteOldSelectionInfo hides
+// the bar because the selection is gone.
 static void InvokeSelectionToolbarCommand(SelectionToolbar* tb, int cmdId) {
     if (!tb || !cmdId) {
         return;
@@ -390,26 +385,7 @@ static void InvokeSelectionToolbarCommand(SelectionToolbar* tb, int cmdId) {
         }
         DeleteOldSelectionInfo(win, true);
     }
-    HideSelectionToolbar(win);
-    tb->dismissed = true;
-
-    if (cmdId != CmdCopySelection) {
-        HwndPostCommand(win->hwndFrame, cmdId, commandPoint);
-        return;
-    }
-    // run it now so the confirmation only follows a copy that happened
-    HwndSendCommand(win->hwndFrame, cmdId, commandPoint);
-    if (!HasPermission(Perm::CopySelection)) {
-        return;
-    }
-    NotificationCreateArgs args;
-    args.hwndParent = win->hwndCanvas;
-    args.groupId = kNotifCopiedToClipboard;
-    args.timeoutMs = kCopiedNotifTimeoutMs;
-    args.corner = NotifCorner::BottomLeft;
-    args.msg = Tr("Copied to clipboard");
-    RemoveNotificationsForGroup(win->hwndCanvas, kNotifCopiedToClipboard);
-    ShowNotification(args);
+    HwndPostCommand(win->hwndFrame, cmdId, commandPoint);
 }
 
 static void OnSelToolbarButtonClicked(SelectionToolbar* tb, VirtMouseEvent* ev) {
@@ -622,8 +598,6 @@ TempStr SelectionToolbarLayoutDumpTemp() {
     SelectionToolbar* tb = win ? GetOrCreateToolbar(win) : nullptr;
     bool visible = tb && tb->host && tb->host->IsVisible();
     out.Append(fmt("visible=%d\n", visible ? 1 : 0));
-    NotificationWnd* notif = win ? GetNotificationForGroup(win->hwndCanvas, kNotifCopiedToClipboard) : nullptr;
-    out.Append(fmt("notif=%s\n", notif ? NotificationGetMessageTemp(notif) : TempStr(StrL(""))));
     if (visible) {
         Rect r = tb->host->ScreenRect();
         out.Append(fmt("placed=%d,%d,%d,%d\n", r.x, r.y, r.dx, r.dy));
@@ -736,9 +710,6 @@ static void ShowSelectionToolbarNow(MainWindow* win) {
 // (UpdateSelectionToolbarPosition asks on every one) can't starve the timer.
 void ShowSelectionToolbar(MainWindow* win) {
     if (!win || !win->hwndCanvas || !gSettings->selectionToolbar) {
-        return;
-    }
-    if (win->selectionToolbar && win->selectionToolbar->dismissed) {
         return;
     }
     if (win->selectionToolbarShowPending) {
@@ -856,13 +827,6 @@ void RefreshSelectionToolbarIcons(MainWindow* win) {
     }
     LayoutToolbar(tb);
     tb->host->Invalidate(false);
-}
-
-// The selection changed or went away: a new one gets the toolbar again.
-void ResetSelectionToolbarDismissed(MainWindow* win) {
-    if (win && win->selectionToolbar) {
-        win->selectionToolbar->dismissed = false;
-    }
 }
 
 // Hide the toolbar but keep the window around for reuse.

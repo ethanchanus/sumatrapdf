@@ -950,6 +950,7 @@
     <ClInclude Include="..\src\LitDoc.h" />
     <ClInclude Include="..\src\PdfCad.h" />
     <ClInclude Include="..\src\PdfDarkMode.h" />
+    <ClInclude Include="..\src\RegexEngine.h" />
     <ClInclude Include="..\src\TextSearch.h" />
     <ClInclude Include="..\src\TextSelection.h" />
     <ClInclude Include="..\src\gui\UIModels.h" />
@@ -974,6 +975,7 @@
     <ClCompile Include="..\src\PalmDbReader.cpp" />
     <ClCompile Include="..\src\PdfCad.cpp" />
     <ClCompile Include="..\src\PdfDarkModeNoOp.cpp" />
+    <ClCompile Include="..\src\RegexEngine.cpp" />
     <ClCompile Include="..\src\TextSearch.cpp" />
     <ClCompile Include="..\src\TextSelection.cpp" />
     <ClCompile Include="..\src\WebpReader.cpp" />

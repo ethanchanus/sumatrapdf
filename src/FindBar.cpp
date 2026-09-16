@@ -139,8 +139,8 @@ struct FindBarWnd : WindowBase {
     Spacer* gapAfterStatus = nullptr;
     Padding* padLayout = nullptr;
     int layoutDpi = 96;
-    // prev / next / match-case / match-whole-word / pop-out / close
-    VirtIconButton* btns[6]{};
+    // prev / next / regex / match-case / match-whole-word / pop-out / close
+    VirtIconButton* btns[7]{};
 
     int barDx = 0;
     int barDy = 0;
@@ -198,6 +198,8 @@ static TempStr FindBarButtonTooltip(int cmd) {
             return AppendCmdAccel(Tr("Match Case"), cmd);
         case CmdFindToggleMatchWholeWord:
             return AppendCmdAccel(Tr("Match Whole Word"), cmd);
+        case CmdFindToggleRegex:
+            return AppendCmdAccel(Tr("Use Regular Expression"), cmd);
         case kFindBarPinCmdId:
             return Tr("Open in a window");
         case kFindBarCloseCmdId:
@@ -216,13 +218,13 @@ FindBarWnd::~FindBarWnd() {
 // the icons come from the shared cache, which renders them for the current
 // theme and size
 void FindBarWnd::UpdateButtonIcons(int dpi) {
-    static const char* icons[6] = {gIconChevronUp,      gIconChevronDown,    gIconMatchCase,
+    static const char* icons[7] = {gIconChevronUp,      gIconChevronDown,     gIconRegex,   gIconMatchCase,
                                    gIconMatchWholeWord, gIconArrowsDiagonal, gIconClose};
     if (dpi <= 0) {
         dpi = GetDpi();
     }
     int isz = RoundUp(DpiScaleByDpi(dpi, 16), 4);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (btns[i]) {
             btns[i]->pixmap = GetCachedPixmapForSvg(Str(icons[i]), isz, isz);
         }
@@ -238,11 +240,11 @@ static void FindBarButtonClicked(FindBarWnd* bar, VirtMouseEvent* ev) {
 }
 
 void FindBarWnd::CreateButtons() {
-    static const int cmds[6] = {
-        CmdFindPrev,      CmdFindNext,       CmdFindToggleMatchCase, CmdFindToggleMatchWholeWord,
-        kFindBarPinCmdId, kFindBarCloseCmdId};
+    static const int cmds[7] = {
+        CmdFindPrev,       CmdFindNext,       CmdFindToggleRegex,   CmdFindToggleMatchCase,
+        CmdFindToggleMatchWholeWord, kFindBarPinCmdId, kFindBarCloseCmdId};
     int pad = DpiScale(4);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         auto* b = new VirtIconButton();
         b->id = cmds[i];
         b->padding = Insets{pad, pad, pad, pad};
@@ -596,6 +598,9 @@ void FindBarWnd::OnCommand(WindowBase::CommandEvent* ev) {
         case CmdFindToggleMatchWholeWord:
             FindToggleMatchWholeWord(win);
             break;
+        case CmdFindToggleRegex:
+            FindToggleRegex(win);
+            break;
         case kFindBarPinCmdId:
             ToggleFloatingFindUI(win); // pop out into the floating window
             break;
@@ -741,6 +746,7 @@ static void ShowCompactBar(MainWindow* win) {
     // reflect the current match-case / whole-word state on the toggle buttons
     FindBarSetMatchCaseChecked(win, win->findMatchCase);
     FindBarSetMatchWholeWordChecked(win, win->findMatchWholeWord);
+    FindBarSetRegexChecked(win, win->findUseRegex);
     PositionFindBar(bar);
     ShowWindow(bar->hwnd, SW_SHOW);
     win->findEdit->SetFocus();
@@ -989,8 +995,9 @@ void FindBarSetStatus(MainWindow* win, Str s, int totalHits) {
 }
 
 // idx into FindBarWnd::btns
-constexpr int kBtnMatchCase = 2;
-constexpr int kBtnMatchWholeWord = 3;
+constexpr int kBtnRegex = 2;
+constexpr int kBtnMatchCase = 3;
+constexpr int kBtnMatchWholeWord = 4;
 
 static void FindBarSetBtnChecked(MainWindow* win, int idx, bool checked) {
     if (!win->findBar) {
@@ -1020,4 +1027,13 @@ void FindBarSetMatchWholeWordChecked(MainWindow* win, bool checked) {
         return;
     }
     FindBarSetBtnChecked(win, kBtnMatchWholeWord, checked);
+}
+
+// reflect regex toggle state on the bar's button
+void FindBarSetRegexChecked(MainWindow* win, bool checked) {
+    if (gSettings->searchUIFloating) {
+        FindWindowSetRegexChecked(win, checked);
+        return;
+    }
+    FindBarSetBtnChecked(win, kBtnRegex, checked);
 }

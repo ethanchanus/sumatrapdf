@@ -555,11 +555,11 @@ bool EngineHasUserRedactMarks(EngineBase* engine) {
     return EngineMupdfHasUserRedactMarks(engine);
 }
 
-Annotation* EngineGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, float padding, Annotation* annot) {
+Annotation* EngineGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* annot) {
     if (!IsEngineMupdf(engine)) {
         return nullptr;
     }
-    return EngineMupdfGetAnnotationAtPos(engine, pageNo, pos, padding, annot);
+    return EngineMupdfGetAnnotationAtPos(engine, pageNo, pos, annot);
 }
 
 Annotation* EngineGetWidgetAtPos(EngineBase* engine, int pageNo, PointF pos) {

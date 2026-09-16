@@ -12,6 +12,7 @@ bool IsFindWindowVisible(MainWindow* win);
 void FindWindowSetStatus(MainWindow* win, Str s, int totalHits = -1);
 void FindWindowSetMatchCaseChecked(MainWindow* win, bool checked);
 void FindWindowSetMatchWholeWordChecked(MainWindow* win, bool checked);
+void FindWindowSetRegexChecked(MainWindow* win, bool checked);
 void FindWindowRefreshResults(MainWindow* win, bool allowNavigation = true);
 void FindWindowUpdatePagesLabel(MainWindow* win);
 void FindWindowSaveSelectedMatch(MainWindow* win);

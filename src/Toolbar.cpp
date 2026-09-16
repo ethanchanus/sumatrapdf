@@ -98,9 +98,8 @@ static ToolbarButtonInfo gToolbarButtons[] = {
 constexpr int kButtonsCount = dimof(gToolbarButtons);
 
 static ToolbarButtonInfo gPdfAnnotationButtons[] = {
-    {gIconAnnotHighlightBrush, CmdAnnotationHighlightBrush, TrN("Highlighter: select text to highlight it")},
-    {gIconAnnotInk, CmdCreateAnnotInk, TrN("Ink")},
-    {gIconAnnotHighlight, CmdCreateAnnotHighlight, TrN("Highlight Selection")},
+    {gIconAnnotHighlightBrush, CmdAnnotationHighlightBrush, TrN("Highlighter")},
+    {gIconAnnotHighlight, CmdCreateAnnotHighlight, TrN("Highlight")},
     {gIconAnnotUnderline, CmdCreateAnnotUnderline, TrN("Underline")},
     {gIconAnnotSquiggly, CmdCreateAnnotSquiggly, TrN("Squiggly")},
     {gIconAnnotStrikeOut, CmdCreateAnnotStrikeOut, TrN("Strike Out")},
@@ -113,6 +112,7 @@ static ToolbarButtonInfo gPdfAnnotationButtons[] = {
     {gIconAnnotSquare, CmdCreateAnnotSquare, TrN("Square")},
     {gIconAnnotCircle, CmdCreateAnnotCircle, TrN("Circle")},
     {gIconAnnotPolygon, CmdCreateAnnotPolygon, TrN("Polygon")},
+    {gIconAnnotInk, CmdCreateAnnotInk, TrN("Ink")},
     {nullptr, 0, {}},
     {gIconAnnotRedact, CmdCreateAnnotRedact, TrN("Redact")},
     {gIconApplyRedactions, CmdApplyRedactions, TrN("Apply Redactions")},
@@ -453,6 +453,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId, AppCommandCtx* ctx) {
         case CmdFindPrev:
         case CmdFindToggleMatchCase:
         case CmdFindToggleMatchWholeWord:
+        case CmdFindToggleRegex:
             return NeedsFindUI(win);
         case CmdReadAloud:
             // opt-in: the button and its drop-down only show if asked for
@@ -687,8 +688,6 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
 
     bool showPdfAnnotationsToolbar = win->pdfAnnotationsToolbarEnabled && ctx->isPdf && ctx->supportsAnnots;
     SetPdfAnnotationsToolbarVisible(win, showPdfAnnotationsToolbar);
-    // a placement mode (ink, shape, highlighter...) owns the page until it ends
-    bool annotButtonsEnabled = showPdfAnnotationsToolbar && !IsPlacingAnnotation(win);
     bool annotVisibilityChanged = false;
     for (int i = 0; i < kPdfAnnotationButtonsCount; i++) {
         const ToolbarButtonInfo& bi = gPdfAnnotationButtons[i];
@@ -698,7 +697,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         CommandVisibility v = GetCommandVisibility(bi.cmdId, *ctx, CommandSurface::Toolbar);
         bool remove = CommandShouldRemove(v);
         annotVisibilityChanged |= SetPdfAnnotationButtonHiddenByIdx(win, i, remove);
-        SetPdfAnnotationButtonEnabledByIdx(win, i, annotButtonsEnabled && !CommandShouldDisable(v) && !remove);
+        SetPdfAnnotationButtonEnabledByIdx(win, i, showPdfAnnotationsToolbar && !CommandShouldDisable(v) && !remove);
         if (bi.cmdId == CmdSaveAnnotations) {
             // name the file it writes to, like the annotation list's Save button
             WindowTab* tab = win->CurrentTab();
@@ -1489,7 +1488,6 @@ void ToolbarNoteDropdownClosed() {
 }
 
 static bool ShowToolbarButtonDropdown(MainWindow*, int cmdId);
-static bool IsAnnotColorCmd(int cmdId);
 
 static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
     VirtCtrl* w = ev->target;
@@ -1502,11 +1500,6 @@ static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
     }
     if (ToolbarDropdownJustClosed() && (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud)) {
         ev->didHandle = true;
-        return;
-    }
-    // annotation buttons are disabled while a placement mode is on
-    ToolbarVirt* tbv = win->toolbarVirt;
-    if (tbv && IsPlacingAnnotation(win) && VecContains(tbv->annotationItems, w)) {
         return;
     }
     // right-click: the drop-down, not the button's command
@@ -1529,11 +1522,9 @@ static void OnToolbarButtonClicked(MainWindow* win, VirtMouseEvent* ev) {
             }
         }
     }
-    // save: the hover menu's rows end the session; they no longer apply.
-    // an annotation button: picking the tool is done, its colors are in the way
-    if (cmdId == CmdSaveAnnotations || IsAnnotColorCmd(cmdId)) {
+    if (cmdId == CmdSaveAnnotations) {
+        // the hover menu's rows end the session; they no longer apply
         HideToolbarHoverDropdown(win);
-        // not again for as long as the mouse stays on the button
         if (ToolbarVirt* tb = win->toolbarVirt) {
             tb->hoverPendingCmdId = cmdId;
         }
@@ -2105,20 +2096,18 @@ static void ToolbarHoverDropdownOnMouseMove(MainWindow* win, const Point* client
     Point ptScreen = UiCursorScreenPos();
     bool overMenu = ToolbarHoverDropdownContainsScreenPoint(win, ptScreen);
     int cmdId = 0;
-    VirtCtrl* w = nullptr;
     if (clientPt) {
-        w = ToolbarItemFromPoint(win, *clientPt);
+        VirtCtrl* w = ToolbarItemFromPoint(win, *clientPt);
+        if (w && FindHoverReg(tb, w->id)) {
+            cmdId = w->id;
+        }
     } else if (HostHasPoint(tb->host, ptScreen)) {
         // a disabled button still gets its drop-down, the way it still gets its
         // tooltip: the rows say what could be done and why they are greyed
-        w = ToolbarItemFromPoint(win, tb->host->FromScreen(ptScreen));
-    }
-    if (w && FindHoverReg(tb, w->id)) {
-        cmdId = w->id;
-    }
-    // except annotation buttons disabled by a placement mode
-    if (w && IsPlacingAnnotation(win) && VecContains(tb->annotationItems, w)) {
-        cmdId = 0;
+        VirtCtrl* w = ToolbarItemFromPoint(win, tb->host->FromScreen(ptScreen));
+        if (w && FindHoverReg(tb, w->id)) {
+            cmdId = w->id;
+        }
     }
 
     if (tb->hoverCmdId != 0) {
@@ -2334,22 +2323,12 @@ static const int kAnnotColorCmds[] = {
     CmdCreateAnnotInk,           CmdCreateAnnotStamp,     CmdCreateAnnotCaret,     CmdCreateAnnotFileAttachment,
 };
 
-static bool IsAnnotColorCmd(int cmdId) {
-    for (int id : kAnnotColorCmds) {
-        if (id == cmdId) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static ParsedColor* AnnotPresetColorSetting(int cmdId) {
     if (!gSettings) {
         return nullptr;
     }
     Annotations& a = gSettings->annotations;
     switch (cmdId) {
-        // the highlighter makes highlight annotations
         case CmdAnnotationHighlightBrush:
         case CmdCreateAnnotHighlight:
             return &a.highlightColor;
@@ -2386,51 +2365,9 @@ static ParsedColor* AnnotPresetColorSetting(int cmdId) {
     return nullptr;
 }
 
-// What an annotation is made in when its setting is empty: MuPDF's defaults,
-// which are also what Acrobat, PDF-XChange and Foxit use
-static Color AnnotDefaultColor(int cmdId) {
-    switch (cmdId) {
-        case CmdCreateAnnotText:
-        case CmdCreateAnnotFileAttachment:
-            return MkRgb(0xff, 0xff, 0);
-        case CmdCreateAnnotFreeText:
-            return MkRgb(0, 0, 0);
-        case CmdCreateAnnotCaret:
-            return MkRgb(0, 0, 0xff);
-        case CmdCreateAnnotLine:
-        case CmdCreateAnnotPolyLine:
-        case CmdCreateAnnotSquare:
-        case CmdCreateAnnotCircle:
-        case CmdCreateAnnotPolygon:
-        case CmdCreateAnnotStamp:
-            return MkRgb(0xff, 0, 0);
-        case CmdCreateAnnotInk:
-            // 40% yellow, Annotations.InkColor's default
-            return 0x6600ffff;
-    }
-    return kColorUnset;
-}
-
-// the color the button's next annotation is made in
-static Color AnnotCurrentColor(int cmdId) {
-    ParsedColor* setting = AnnotPresetColorSetting(cmdId);
-    Color col = setting ? GetParsedColor(*setting, kColorUnset) : kColorUnset;
-    return col != kColorUnset ? col : AnnotDefaultColor(cmdId);
-}
-
-// The colors a button offers. Ink has its own, translucent ones: they are
-// exactly what it paints. cmdId 0 is not a button, and gets the presets
-static Str* AnnotPresetColorList(int cmdId) {
-    if (!gSettings) {
-        return nullptr;
-    }
-    Annotations& a = gSettings->annotations;
-    return (cmdId == CmdCreateAnnotInk) ? &a.inkColors : &a.presetColors;
-}
-
-static void AnnotPresetColors(int cmdId, Vec<Color>& out) {
-    if (Str* list = AnnotPresetColorList(cmdId)) {
-        ParseColorList(*list, out, 0);
+static void AnnotPresetColors(Vec<Color>& out) {
+    if (gSettings) {
+        ParseColorList(gSettings->annotations.presetColors, out, 0);
     }
 }
 
@@ -2532,9 +2469,8 @@ struct AnnotColorsTarget {
 };
 
 static void AnnotColorsPicked(AnnotColorsTarget* target, ChangeColorsArgs* args) {
-    Str* list = AnnotPresetColorList(target->cmdId);
-    if (args->colorsChanged && list) {
-        str::ReplaceWithCopy(list, SerializeColorList(args->colors));
+    if (args->colorsChanged && gSettings) {
+        str::ReplaceWithCopy(&gSettings->annotations.presetColors, SerializeColorList(args->colors));
         ScheduleSaveSettings();
     }
     if (args->didSelect && args->color != kColorUnset) {
@@ -2553,6 +2489,7 @@ static void OnAnnotColorsEditClicked(MainWindow* win, VirtMouseEvent* ev) {
         return;
     }
     int cmdId = w->id;
+    ParsedColor* setting = AnnotPresetColorSetting(cmdId);
     uitask::Post(MkFunc0(PostedHideHoverDropdown, win), "HideToolbarHoverDropdown");
 
     auto* target = new AnnotColorsTarget();
@@ -2561,9 +2498,9 @@ static void OnAnnotColorsEditClicked(MainWindow* win, VirtMouseEvent* ev) {
     auto* args = new ChangeColorsArgs();
     args->win = win;
     args->title = Tr("Annotation Colors");
-    args->color = AnnotCurrentColor(cmdId);
+    args->color = setting ? GetParsedColor(*setting, kColorUnset) : kColorUnset;
     args->withOpacity = true;
-    AnnotPresetColors(cmdId, args->colors);
+    AnnotPresetColors(args->colors);
     args->onClose = MkFunc1(AnnotColorsPicked, target);
     ShowChangeColorsDialog(args);
 }
@@ -2582,36 +2519,17 @@ static bool SameColorAndAlpha(Color a, Color b) {
     return ((a & 0xffffff) == (b & 0xffffff)) && (aa == ab);
 }
 
-// the color a button makes annotations in is always one of the presets, so
-// its drop-down can show it; one set some other way joins the list
-static void EnsureAnnotPresetColor(int cmdId, Color col) {
-    Str* list = AnnotPresetColorList(cmdId);
-    if (!list || col == kColorUnset) {
-        return;
-    }
-    Vec<Color> colors;
-    AnnotPresetColors(cmdId, colors);
-    for (Color c : colors) {
-        if (SameColorAndAlpha(c, col)) {
-            return;
-        }
-    }
-    VecAppend(colors, col);
-    str::ReplaceWithCopy(list, SerializeColorList(colors));
-    ScheduleSaveSettings();
-}
-
 // The drop-down's content: the preset colors as swatches with the one in use
 // ringed, and a button that opens the color dialog on the whole set. cmdId is 0
 // when this is not a toolbar button's drop-down, and nothing is recorded then.
 // swatchesOut, when given, collects the swatches in the order they are laid
 // out, for the -dbg-control dump
-static ILayout* MakeAnnotColorsPanel(MainWindow* win, Str label, Color current, int cmdId, bool withNone,
+static ILayout* MakeAnnotColorsPanel(MainWindow* win, Color current, int cmdId, bool withNone,
                                      Vec<ToolbarColorSwatch*>* swatchesOut, const Func1<VirtMouseEvent*>& onSwatch,
-                                     const Func1<VirtMouseEvent*>& onEdit, ILayout* extra = nullptr, Str title = {}) {
+                                     const Func1<VirtMouseEvent*>& onEdit, ILayout* extra = nullptr) {
     ToolbarVirt* tb = win->toolbarVirt;
     Vec<Color> colors;
-    AnnotPresetColors(cmdId, colors);
+    AnnotPresetColors(colors);
 
     auto* row = new HBox();
     row->alignCross = CrossAxisAlign::CrossCenter;
@@ -2657,48 +2575,14 @@ static ILayout* MakeAnnotColorsPanel(MainWindow* win, Str label, Color current, 
     edit->onClick = onEdit;
     row->AddChild(edit);
 
-    auto* labelText = NewVirtText({
-        .s = label,
+    auto* vbox = new VBox();
+    vbox->alignCross = CrossAxisAlign::Stretch;
+    vbox->AddChild(NewVirtText({
+        .s = Tr("Colors"),
         .font = tb->platformFont,
         .textColor = TbTextColor(),
         .isRtl = IsUIRtl(),
-    });
-    // indented by the swatch's padding so the text lines up with the first
-    // color, and 0.25rem above the swatches
-    Insets labelInsets{.bottom = DpiScale(4)};
-    if (IsUIRtl()) {
-        labelInsets.right = pad;
-    } else {
-        labelInsets.left = pad;
-    }
-
-    ILayout* labelRow = labelText;
-    if (len(title) > 0) {
-        // what the button is, as its tooltip says, since the drop-down takes
-        // the tooltip's place; on the far end of the label's row
-        auto* hbox = new HBox();
-        hbox->alignMain = MainAxisAlign::SpaceBetween;
-        hbox->alignCross = CrossAxisAlign::CrossCenter;
-        hbox->AddChild(labelText);
-        Insets gap{};
-        if (IsUIRtl()) {
-            gap.right = DpiScale(16);
-        } else {
-            gap.left = DpiScale(16);
-        }
-        hbox->AddChild(new Padding(NewVirtText({
-                                       .s = title,
-                                       .font = tb->platformFont,
-                                       .textColor = TbTextColor(),
-                                       .isRtl = IsUIRtl(),
-                                   }),
-                                   gap));
-        labelRow = hbox;
-    }
-
-    auto* vbox = new VBox();
-    vbox->alignCross = CrossAxisAlign::Stretch;
-    vbox->AddChild(new Padding(labelRow, labelInsets));
+    }));
     vbox->AddChild(row);
     if (extra) {
         vbox->AddChild(extra);
@@ -2775,15 +2659,10 @@ struct InkStrokePreview : VirtCtrl {
 // exactly as long as the slider does.
 struct InkThicknessSlider : VirtSlider {
     InkStrokePreview* preview = nullptr;
-    // the width as a number, under the slider; a sibling like the preview
-    VirtText* valueText = nullptr;
     Str text; // owned; what the -dbg-control dump shows for the slider
     // where the width goes when let go. Without one it's the setting the ink
     // button makes its strokes with
     Func1<int> onThickness;
-    // committed by letting go of a drag, so the mouse capture is about to be
-    // released; the color popup that holds the mouse takes it back
-    bool releasingMouse = false;
 
     ~InkThicknessSlider() override { str::Free(text); }
 
@@ -2792,10 +2671,6 @@ struct InkThicknessSlider : VirtSlider {
             preview->thickness = value;
             preview->Invalidate();
         }
-        if (valueText) {
-            valueText->SetText(fmt("%d", value));
-            valueText->Invalidate();
-        }
         if (!onThickness.IsValid() && gSettings) {
             gSettings->annotations.inkBorderWidth = value;
         }
@@ -2803,8 +2678,6 @@ struct InkThicknessSlider : VirtSlider {
     // rewriting an annotation is too slow to do on every step of a drag, so
     // the width lands when the slider is let go
     void OnCommitted() {
-        // a mouse-up commits while still adjusting, a wheel step doesn't
-        releasingMouse = IsAdjusting();
         OnChanged();
         if (onThickness.IsValid()) {
             onThickness.Call(value);
@@ -2818,19 +2691,19 @@ struct InkThicknessSlider : VirtSlider {
 // thickness < 0 starts the slider at Annotations.InkBorderWidth and leaves the
 // width there; otherwise it starts there and onThickness gets it
 static ILayout* MakeInkThicknessPanel(MainWindow* win, Color current, int thickness, const Func1<int>& onThickness,
-                                      Str label, int minThickness, InkThicknessSlider** sliderOut) {
+                                      InkThicknessSlider** sliderOut) {
     ToolbarVirt* tb = win->toolbarVirt;
     if (thickness < 0) {
         thickness = InkThickness();
     }
-    thickness = limitValue(thickness, minThickness, kInkThicknessMax);
+    thickness = limitValue(thickness, kInkThicknessMin, kInkThicknessMax);
 
     auto* preview = new InkStrokePreview();
     preview->col = (current == kColorUnset) ? kColRed : current;
     preview->thickness = thickness;
 
     auto* slider = new InkThicknessSlider();
-    slider->minVal = minThickness;
+    slider->minVal = kInkThicknessMin;
     slider->maxVal = kInkThicknessMax;
     slider->value = thickness;
     slider->idealDx = DpiScale(kInkSliderDx);
@@ -2851,23 +2724,7 @@ static ILayout* MakeInkThicknessPanel(MainWindow* win, Color current, int thickn
             .isRtl = IsUIRtl(),
         });
     };
-    // the width as a number, centered between the ends. Padded out to the
-    // widest value so it keeps its place when a drag adds a digit.
-    TempStr valueStr = fmt("%d", thickness);
-    int widestDx = PlatformFontMeasureText(tb->platformFont, fmt("%d", kInkThicknessMax)).dx;
-    int extraDx = std::max(widestDx - PlatformFontMeasureText(tb->platformFont, valueStr).dx, 0);
-    auto* valueText = NewVirtText({
-        .s = valueStr,
-        .font = tb->platformFont,
-        .textColor = TbTextColor(),
-        .align = VirtTextAlign::Center,
-        .isRtl = IsUIRtl(),
-        .padding = {.right = extraDx - (extraDx / 2), .left = extraDx / 2},
-    });
-    slider->valueText = valueText;
-
     ends->AddChild(mkLabel(Tr("Thin")));
-    ends->AddChild(valueText);
     ends->AddChild(mkLabel(Tr("Thick")));
 
     auto* vbox = new VBox();
@@ -2875,7 +2732,7 @@ static ILayout* MakeInkThicknessPanel(MainWindow* win, Color current, int thickn
     int gap = DpiScale(6);
     vbox->AddChild(new Padding(preview, Insets{gap, 0, gap, 0}));
     vbox->AddChild(NewVirtText({
-        .s = label,
+        .s = Tr("Thickness"),
         .font = tb->platformFont,
         .textColor = TbTextColor(),
         .isRtl = IsUIRtl(),
@@ -2892,20 +2749,12 @@ static void BuildAnnotColorsHoverMenu(MainWindow* win, ToolbarHoverBuildEvent* e
     if (!tb || !setting) {
         return;
     }
-    Color current = AnnotCurrentColor(ev->cmdId);
-    EnsureAnnotPresetColor(ev->cmdId, current);
+    Color current = GetParsedColor(*setting, kColorUnset);
     // ink is the one annotation whose width is a choice too
     InkThicknessSlider* slider = nullptr;
-    ILayout* extra = (ev->cmdId == CmdCreateAnnotInk)
-                         ? MakeInkThicknessPanel(win, current, -1, {}, Tr("Thickness"), kInkThicknessMin, &slider)
-                         : nullptr;
-    // a note's color fills its icon, behind the note
-    Str label = (ev->cmdId == CmdCreateAnnotText) ? Tr("Background Color") : Tr("Color");
-    // the button still has its tooltip; it's taken once the drop-down is up
-    VirtCtrl* btn = ToolbarItemForCmd(win, ev->cmdId);
-    Str title = btn ? btn->tooltip : Str{};
-    ev->layout = MakeAnnotColorsPanel(win, label, current, ev->cmdId, false, nullptr, MkFunc1(OnAnnotColorClicked, win),
-                                      MkFunc1(OnAnnotColorsEditClicked, win), extra, title);
+    ILayout* extra = (ev->cmdId == CmdCreateAnnotInk) ? MakeInkThicknessPanel(win, current, -1, {}, &slider) : nullptr;
+    ev->layout = MakeAnnotColorsPanel(win, current, ev->cmdId, false, nullptr, MkFunc1(OnAnnotColorClicked, win),
+                                      MkFunc1(OnAnnotColorsEditClicked, win), extra);
     if (slider) {
         RecordHoverItem(tb, slider, slider->text, {{}, slider->text, ev->cmdId, true, false});
     }
@@ -2932,7 +2781,6 @@ struct AnnotColorPopup {
 static AnnotColorPopup* gAnnotColorPopup = nullptr;
 
 static void ShowAnnotColorsDialog(MainWindow* win, Color current, const Func1<Color>& onPick);
-static void ShowAnnotPopupHost(AnnotColorPopup* p, ILayout* layout, Rect anchor);
 
 static void PostedCloseAnnotColorPopup(MainWindow* win) {
     AnnotColorPopup* p = gAnnotColorPopup;
@@ -2985,7 +2833,7 @@ static void ShowAnnotColorsDialog(MainWindow* win, Color current, const Func1<Co
     args->title = Tr("Annotation Colors");
     args->color = current;
     args->withOpacity = true;
-    AnnotPresetColors(0, args->colors);
+    AnnotPresetColors(args->colors);
     args->onClose = MkFunc1(AnnotColorsPicked, target);
     ShowChangeColorsDialog(args);
 }
@@ -3001,13 +2849,6 @@ static void OnAnnotColorPopupEdit(AnnotColorPopup* p, VirtMouseEvent*) {
 static void PaintAnnotColorPopupBg(MainWindow*, VirtHostPaintEvent* ev) {
     ev->gfx->FillRect(ev->clientRect, TbBgColor());
     ev->gfx->DrawRect(ev->clientRect, ThemeEdgeColor(), DpiScale(kHoverMenuBorder));
-}
-
-static void PostedReclaimAnnotColorPopupCapture(MainWindow*) {
-    AnnotColorPopup* p = gAnnotColorPopup;
-    if (p && p->host) {
-        ::SetCapture(p->host->native);
-    }
 }
 
 static void AnnotColorPopupNativeMsg(AnnotColorPopup* p, VirtHostNativeMsg* ev) {
@@ -3030,24 +2871,15 @@ static void AnnotColorPopupNativeMsg(AnnotColorPopup* p, VirtHostNativeMsg* ev) 
             break;
         }
         case WM_CAPTURECHANGED:
-            if ((HWND)ev->lp == p->host->native) {
-                break;
+            if ((HWND)ev->lp != p->host->native) {
+                CloseAnnotColorPopup(p);
             }
-            // the slider lets go of the mouse when its drag ends; the popup
-            // takes it back instead of treating that as a click elsewhere
-            if (!ev->lp && p->slider && p->slider->releasingMouse) {
-                p->slider->releasingMouse = false;
-                uitask::Post(MkFunc0(PostedReclaimAnnotColorPopupCapture, p->win), "ReclaimAnnotColorPopupCapture");
-                break;
-            }
-            CloseAnnotColorPopup(p);
             break;
     }
 }
 
-void ShowAnnotColorPopup(MainWindow* win, Rect anchor, Color current, bool withNone, Str label,
-                         const Func1<Color>& onPick, int thickness, const Func1<int>& onThickness, Str thicknessLabel,
-                         int minThickness) {
+void ShowAnnotColorPopup(MainWindow* win, Rect anchor, Color current, bool withNone, const Func1<Color>& onPick,
+                         int thickness, const Func1<int>& onThickness) {
     ToolbarVirt* tb = win ? win->toolbarVirt : nullptr;
     if (!tb || gAnnotColorPopup) {
         return;
@@ -3059,90 +2891,11 @@ void ShowAnnotColorPopup(MainWindow* win, Rect anchor, Color current, bool withN
     // an ink annotation's stroke is as much a choice as its color, so its
     // popup has the same Thickness slider the ink button's drop-down has
     InkThicknessSlider* slider = nullptr;
-    ILayout* extra =
-        (thickness >= 0)
-            ? MakeInkThicknessPanel(win, current, thickness, onThickness,
-                                    len(thicknessLabel) > 0 ? thicknessLabel : Tr("Thickness"), minThickness, &slider)
-            : nullptr;
-    ILayout* layout =
-        MakeAnnotColorsPanel(win, label, current, 0, withNone, &p->swatches, MkFunc1(OnAnnotColorPopupSwatch, p),
-                             MkFunc1(OnAnnotColorPopupEdit, p), extra);
+    ILayout* extra = (thickness >= 0) ? MakeInkThicknessPanel(win, current, thickness, onThickness, &slider) : nullptr;
+    ILayout* layout = MakeAnnotColorsPanel(win, current, 0, withNone, &p->swatches, MkFunc1(OnAnnotColorPopupSwatch, p),
+                                           MkFunc1(OnAnnotColorPopupEdit, p), extra);
     p->slider = slider;
-    ShowAnnotPopupHost(p, layout, anchor);
-}
 
-// A number picked with a slider: a label, the slider, and the value under it.
-// onValue gets the value when the slider is let go.
-void ShowAnnotSliderPopup(MainWindow* win, Rect anchor, Str label, int value, int minVal, int maxVal,
-                          const Func1<int>& onValue) {
-    ToolbarVirt* tb = win ? win->toolbarVirt : nullptr;
-    if (!tb || gAnnotColorPopup) {
-        return;
-    }
-    auto* p = new AnnotColorPopup();
-    p->win = win;
-    value = limitValue(value, minVal, maxVal);
-
-    auto* slider = new InkThicknessSlider();
-    slider->minVal = minVal;
-    slider->maxVal = maxVal;
-    slider->value = value;
-    slider->idealDx = DpiScale(kInkSliderDx);
-    slider->onThickness = onValue;
-    slider->onValueChanged = MkMethod0<InkThicknessSlider, &InkThicknessSlider::OnChanged>(slider);
-    slider->onValueCommitted = MkMethod0<InkThicknessSlider, &InkThicknessSlider::OnCommitted>(slider);
-    str::ReplaceWithCopy(&slider->text, fmt("thickness=%d", value));
-
-    auto mkEnd = [tb](int v) {
-        return NewVirtText({
-            .s = fmt("%d", v),
-            .font = tb->platformFont,
-            .textColor = TbDisabledColor(),
-            .isRtl = IsUIRtl(),
-        });
-    };
-    // centered between the ends, padded out to the widest value so it keeps
-    // its place when a drag adds a digit
-    TempStr valueStr = fmt("%d", value);
-    int widestDx = PlatformFontMeasureText(tb->platformFont, fmt("%d", maxVal)).dx;
-    int extraDx = std::max(widestDx - PlatformFontMeasureText(tb->platformFont, valueStr).dx, 0);
-    auto* valueText = NewVirtText({
-        .s = valueStr,
-        .font = tb->platformFont,
-        .textColor = TbTextColor(),
-        .align = VirtTextAlign::Center,
-        .isRtl = IsUIRtl(),
-        .padding = {.right = extraDx - (extraDx / 2), .left = extraDx / 2},
-    });
-    slider->valueText = valueText;
-
-    auto* ends = new HBox();
-    ends->alignMain = MainAxisAlign::SpaceBetween;
-    ends->alignCross = CrossAxisAlign::CrossCenter;
-    ends->AddChild(mkEnd(minVal));
-    ends->AddChild(valueText);
-    ends->AddChild(mkEnd(maxVal));
-
-    auto* vbox = new VBox();
-    vbox->alignCross = CrossAxisAlign::Stretch;
-    vbox->AddChild(new Padding(NewVirtText({
-                                   .s = label,
-                                   .font = tb->platformFont,
-                                   .textColor = TbTextColor(),
-                                   .isRtl = IsUIRtl(),
-                               }),
-                               Insets{.bottom = DpiScale(4)}));
-    vbox->AddChild(slider);
-    vbox->AddChild(ends);
-    int b = DpiScale(kHoverMenuBorder);
-    int pad = DpiScale(kAnnotColorsPad);
-    ILayout* layout = new Padding(vbox, Insets{b + pad, b + pad, b + pad, b + pad});
-    p->slider = slider;
-    ShowAnnotPopupHost(p, layout, anchor);
-}
-
-static void ShowAnnotPopupHost(AnnotColorPopup* p, ILayout* layout, Rect anchor) {
-    MainWindow* win = p->win;
     VirtHost::CreateArgs args;
     args.parent = win->hwndFrame;
     args.className = WStrL(L"SumatraAnnotColorPopup");

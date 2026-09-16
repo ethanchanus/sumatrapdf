@@ -54,10 +54,6 @@ import { testit as issue1914 } from "./issue-1914.ts";
 import { testit as issue1198 } from "./issue-1198.ts";
 import { testit as issue2568 } from "./issue-2568.ts";
 import { testit as issue2799 } from "./issue-2799.ts";
-import { testit as issue6190 } from "./issue-6190.ts";
-import { testit as issue6194 } from "./issue-6194.ts";
-import { testit as inkAnnotationBounds } from "./ink-annotation-bounds.ts";
-import { testit as issue6197 } from "./issue-6197.ts";
 import { testit as findMatchSelect } from "./issue-find-match-select.ts";
 import { testit as findResultsSorted } from "./find-results-sorted.ts";
 import { testit as findWindowLayout } from "./find-window-layout.ts";
@@ -130,8 +126,6 @@ import { testit as toolbarHoverDropdown } from "./toolbar-hover-dropdown.ts";
 import { testit as issue6095 } from "./issue-6095.ts";
 import { testit as epubRelayoutStalePage } from "./epub-relayout-stale-page.ts";
 import { testit as epubThemeRestyle } from "./epub-theme-restyle.ts";
-import { testit as embeddedImageAttachment } from "./embedded-image-attachment.ts";
-import { testit as ttsEngineCrashRecovery } from "./tts-engine-crash-recovery.ts";
 import { testit as issue5943 } from "./issue-5943.ts";
 import { testit as issue6117 } from "./issue-6117.ts";
 import { testit as issue6118 } from "./issue-6118.ts";
@@ -194,7 +188,6 @@ import { testit as annotUndoRedo } from "./annot-undo-redo.ts";
 import { testit as textAnnotationPlacement } from "./text-annotation-placement.ts";
 import { testit as freeTextAnnotationPlacement } from "./free-text-annotation-placement.ts";
 import { testit as freeTextEditToolbar } from "./free-text-edit-toolbar.ts";
-import { testit as issue6198 } from "./issue-6198.ts";
 import { testit as createAnnotEntersEditMode } from "./create-annot-enters-edit-mode.ts";
 import { testit as issue6111 } from "./issue-6111.ts";
 import { testit as annotListPlacement } from "./annot-list-placement.ts";
@@ -307,8 +300,6 @@ export const tests: NamedTest[] = [
   // first: it drives the home page, whose thumbnail selection follows the
   // mouse, so it is the one test that cares what the machine was doing before
   ["issue-5978", issue5978],
-  ["annot-moveable-types", annotMoveableTypes],
-  ["move-polygon-polyline-ink", movePolygonPolylineInk],
   ["issue-5918", issue5918],
   ["issue-6167", issue6167],
   ["issue-6168", issue6168],
@@ -330,8 +321,6 @@ export const tests: NamedTest[] = [
   ["issue-2629", issue2629],
   ["issue-6135", issue6135],
   ["issue-4276", issue4276],
-  ["embedded-image-attachment", embeddedImageAttachment],
-  ["tts-engine-crash-recovery", ttsEngineCrashRecovery],
   ["issue-4705", issue4705],
   ["toc-tree-sent-click", tocTreeSentClick],
   ["issue-5956", issue5956],
@@ -381,11 +370,11 @@ export const tests: NamedTest[] = [
   ["issue-6048", issue6048],
   ["issue-6053", issue6053],
   ["issue-6054", issue6054],
+  ["move-polygon-polyline-ink", movePolygonPolylineInk],
   ["pdf-edit-toolbar-interaction", pdfEditToolbarInteraction],
   ["text-annotation-placement", textAnnotationPlacement],
   ["free-text-annotation-placement", freeTextAnnotationPlacement],
   ["free-text-edit-toolbar", freeTextEditToolbar],
-  ["issue-6198", issue6198],
   ["create-annot-enters-edit-mode", createAnnotEntersEditMode],
   ["issue-6166", issue6166],
   ["issue-6169", issue6169],
@@ -393,6 +382,7 @@ export const tests: NamedTest[] = [
   ["issue-6111", issue6111],
   ["annot-list-placement", annotListPlacement],
   ["exit-edit-pdf-deselects", exitEditPdfDeselects],
+  ["annot-moveable-types", annotMoveableTypes],
   ["stamp-caret-annotation-placement", stampCaretAnnotationPlacement],
   ["issue-6112", issue6112],
   ["line-annotation-placement", lineAnnotationPlacement],
@@ -419,10 +409,6 @@ export const tests: NamedTest[] = [
   ["issue-1198", issue1198],
   ["issue-2568", issue2568],
   ["issue-2799", issue2799],
-  ["issue-6190", issue6190],
-  ["issue-6194", issue6194],
-  ["ink-annotation-bounds", inkAnnotationBounds],
-  ["issue-6197", issue6197],
   ["issue-find-match-select", findMatchSelect],
   ["find-results-sorted", findResultsSorted],
   ["find-window-layout", findWindowLayout],

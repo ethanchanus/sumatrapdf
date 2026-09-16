@@ -183,8 +183,6 @@ enum class AnnotPlacementKind {
     PolyLine,
     Shape,
     Ink,
-    // not placed: each text selection made while it's on is highlighted
-    Highlighter,
 };
 
 struct AnnotPlacement {
@@ -198,6 +196,10 @@ struct AnnotPlacement {
     Vec<PointF> points;
     Vec<int> strokeCounts;
     bool circle = false;
+    // highlighter brush: an ink stroke painted with a fixed-size translucent
+    // marker instead of the thin pen
+    bool highlightBrush = false;
+    float brushWidthPt = 0.f;
     bool mouseDown = false;
     bool didDrag = false;
     bool constrain = false;
@@ -600,6 +602,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     bool findCancelled = false;
     bool findMatchCase = false;
     bool findMatchWholeWord = false;
+    bool findUseRegex = false;
     // find-as-you-type is debounced: a WM_TIMER on hwndFrame fires the actual
     // search a short while after the last keystroke (see SearchAndDDE.cpp).
     // true while that timer is armed and hasn't fired yet.
@@ -615,6 +618,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Str findCountRangeText;
     bool findCountMatchCase = false;
     bool findCountMatchWholeWord = false;
+    bool findCountUseRegex = false;
     bool findCountValid = false;
     // the scan stopped at kMaxFindCount matches; the real total is higher
     // (shown as "n / m+")
@@ -628,6 +632,7 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     Str findCountPendingText;
     bool findCountPendingMatchCase = false;
     bool findCountPendingMatchWholeWord = false;
+    bool findCountPendingUseRegex = false;
     // per-match positions (and optional snippets for the floating results list);
     // also used by PaintAllFindMatches to highlight every find hit (see SearchAndDDE.cpp)
     Vec<FindMatch> findMatches;

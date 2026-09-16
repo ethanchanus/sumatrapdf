@@ -1073,6 +1073,8 @@ void DisplayModel::BuildPagesInfo() {
     // otherwise Relayout() measures the shown pages, on demand in non-continuous mode
 }
 
+// TODO: a better name e.g. ShouldShow() to better distinguish between
+// before-layout info and after-layout visibility checks
 bool DisplayModel::PageShown(int pageNo) const {
     if (!ValidPageNo(pageNo) || !pagesInfo) {
         return false;
@@ -1926,18 +1928,20 @@ int DisplayModel::GetPageNextToPoint(Point pt) const {
     return closest;
 }
 
-// Relayout() only sets zoomReal for shown pages, so in non-continuous modes the
-// other pages have 0 (issue #2014); compute their zoom for the current mode
+// TODO: try to track down why sometimes zoom on a page is 0
+// like https://github.com/sumatrapdfreader/sumatrapdf/issues/2014
 static float getZoomSafe(DisplayModel* dm, int pageNo, const PageInfo* pageInfo) {
     float zoom = pageInfo->zoomReal;
     if (zoom > 0) {
         return zoom;
     }
-    zoom = dm->GetZoomReal(pageNo);
-    if (zoom > 0) {
-        return zoom;
-    }
-    // empty viewport (before the canvas is sized)
+    Str name = dm->GetFilePath();
+    logf(
+        "getZoomSafe: invalid zoom in doc: %s\npageNo: %d\npageInfo->zoomReal\n%.2f\ndm->zoomReal: %.2f\n"
+        "dm->zoomVirtual: %.2f\n",
+        name, pageNo, zoom, pageInfo->zoomReal, dm->zoomReal, dm->zoomVirtual);
+    ReportDebugIf(true);
+
     if (dm->zoomReal > 0) {
         return dm->zoomReal;
     }
@@ -2046,11 +2050,8 @@ Annotation* DisplayModel::GetAnnotationAtPos(Point pt, Annotation* annot) {
         return nullptr;
     }
 
-    // hit the drawn mark, not just the bounds: thin lines are sub-pixel when zoomed out
     PointF pos = CvtFromScreen(pt, pageNo);
-    float zoom = getZoomSafe(this, pageNo, GetPageInfo(pageNo));
-    float padding = (float)kAnnotMarkPadding / zoom;
-    return EngineGetAnnotationAtPos(engine, pageNo, pos, padding, annot);
+    return EngineGetAnnotationAtPos(engine, pageNo, pos, annot);
 }
 
 // form fields (widgets) are hit-tested separately from annotations
@@ -2201,8 +2202,9 @@ RectF DisplayModel::GetContentBox(int pageNo) const {
         pageInfo->contentBox = engine->PageContentBox(pageNo);
     }
     cbox = pageInfo->contentBox;
-    float zoom = pageInfo->zoomReal > 0 ? pageInfo->zoomReal : GetZoomReal(pageNo);
-    if (zoom <= 0) {
+    float zoom = pageInfo->zoomReal;
+    // TODO: must be a better way
+    if (zoom == 0) {
         zoom = zoomReal;
     }
     return engine->Transform(cbox, pageNo, zoom, rotation);
@@ -2218,6 +2220,7 @@ Point DisplayModel::GetContentStart(int pageNo) const {
     return ToPoint(contentBox.TL());
 }
 
+// TODO: what's GoToPage supposed to do for Facing at 400% zoom?
 void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX) {
     SyncWithEngineLayout();
     if (!ValidPageNo(pageNo)) {
@@ -2226,9 +2229,7 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
         return;
     }
 
-    // a suppressed nav point ignores the scroll state; don't compute it: when
-    // SyncWithEngineLayout() restores the view, pages aren't laid out yet
-    if (addNavPt || (!stableNavPoint.suppress && ShouldCommitStableNavPointBeforeViewChange(this, GetScrollState()))) {
+    if (addNavPt || ShouldCommitStableNavPointBeforeViewChange(this, GetScrollState())) {
         AddNavPoint();
     }
 
@@ -2281,6 +2282,10 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
     // that scrolled a whole page too far right when restoring a view of such a
     // page (tab switch, window resize, session restore) (fixes #3591).
 
+    /* Hack: if an image is smaller in Y axis than the draw area, then we center
+       the image by setting pageInfo->currPos.y in RecalcPagesInfo. So we shouldn't
+       scroll (adjust viewPort.y) there because it defeats the purpose.
+       TODO: is there a better way of y-centering? */
     viewPort.y = scrollY;
     // Move the next page to the top (unless the remaining pages fit onto a single screen)
     if (IsContinuous(GetDisplayMode())) {
@@ -2731,7 +2736,7 @@ void DisplayModel::ScrollYBy(int dy, bool changePage) {
                 ReportIf(!ValidPageNo(newPageNo));
                 pageInfo = GetPageInfo(newPageNo);
                 newYOff = pageInfo->pos.dy - viewPort.dy;
-                newYOff = std::max(newYOff, 0);
+                newYOff = std::max(newYOff, 0); /* TODO: center instead? */
                 GoToPrevPage(newYOff);
                 return;
             }
@@ -3368,17 +3373,12 @@ void DisplayModel::ScrollTo(int pageNo, RectF rect, float zoom) {
         PointF scrollD = engine->Transform(rect.TL(), pageNo, pageZoom, rotation);
         scroll.y = (int)scrollD.y;
     }
-    // a top low on (or below) a tall page would make the next page most visible:
-    // stop at the target page's bottom. Adobe Reader never shows the previous page
-    PageInfo* destPage = GetPageInfo(pageNo);
-    if (destPage) {
-        scroll.y = std::min(scroll.y, destPage->pos.dy - viewPort.dy + windowMargin.top);
-    }
-    scroll.y = std::max(scroll.y, 0);
+    // TODO: prevent scroll.y from getting too large?
+    scroll.y = std::max(scroll.y, 0); // Adobe Reader never shows the previous page
     if (isVirtualZoom) {
-        // already on pageNo; scroll.y is page-relative, ScrollYTo() takes a document offset
+        // already on pageNo; only adjust scroll after fit zoom
         if (scroll.y > 0) {
-            GoToPage(pageNo, scroll.y, false, -1);
+            ScrollYTo(scroll.y);
         }
     } else {
         GoToPage(pageNo, scroll.y, true, -1);

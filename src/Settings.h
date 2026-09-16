@@ -697,8 +697,7 @@ struct Annotations {
     Str freeTextAlignment;
     // colors offered by the drop-down on the annotation toolbar's buttons,
     // separated by space. Picking one sets the color of new annotations of
-    // that type. The color a button currently makes annotations in is
-    // added when it is missing
+    // that type
     Str presetColors;
     // color of newly created text (sticky note) annotations
     ParsedColor textIconColor;
@@ -717,14 +716,9 @@ struct Annotations {
     // color of newly created polygon annotations. If not set, the PDF
     // engine's default (red) is used
     ParsedColor polygonColor;
-    // color of newly created ink annotations, as #aarrggbb: the alpha is
-    // how translucent the stroke is (00 = transparent, FF = opaque), so
-    // the color is exactly what ends up on the page
+    // color of newly created ink annotations. If not set, the PDF engine's
+    // default (red) is used
     ParsedColor inkColor;
-    // colors offered by the ink button's drop-down, separated by space.
-    // Use #aarrggbb values: the alpha is the stroke's opacity. The color
-    // ink currently draws in is added when it is missing
-    Str inkColors;
     // width of the stroke of new ink annotations, in points
     int inkBorderWidth;
     // color of newly created stamp annotations. If not set, the PDF
@@ -1109,9 +1103,6 @@ struct Settings {
     // if true, show a tip when hovering an annotation (e.g. "Highlight
     // annotation. Ctrl+click to edit.")
     bool showAnnotationNotification;
-    // if true, at the end of a document show a hint to open the next file
-    // in the folder. Closing the hint sets it to false
-    bool showFileNavigateHint;
     // if true, show the author at the bottom of an annotation tooltip as
     // "Author: <author>"
     bool showAnnotationAuthorInTooltip;
@@ -1519,18 +1510,15 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, freeTextSize), SettingType::Int, 12},
     {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 1},
     {offsetof(Annotations, freeTextAlignment), SettingType::String, (intptr_t)"left"},
-    {offsetof(Annotations, presetColors), SettingType::String,
-     (intptr_t)"#ffff00 #8bf05d #99defa #f199d2 #e24745 #ff0000 #0000ff #000000"},
+    {offsetof(Annotations, presetColors), SettingType::String, (intptr_t)"#ffff00 #8bf05d #99defa #f199d2 #e24745"},
     {offsetof(Annotations, textIconColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, lineColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, polyLineColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, squareColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, circleColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, polygonColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)"#66ffff00"},
-    {offsetof(Annotations, inkColors), SettingType::String,
-     (intptr_t)"#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745"},
-    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 16},
+    {offsetof(Annotations, inkColor), SettingType::Color, (intptr_t)""},
+    {offsetof(Annotations, inkBorderWidth), SettingType::Int, 6},
     {offsetof(Annotations, stampColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, caretColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, fileAttachmentColor), SettingType::Color, (intptr_t)""},
@@ -1539,12 +1527,12 @@ static const FieldInfo gAnnotationsFields[] = {
 };
 static const StructInfo gAnnotationsInfo = {
     sizeof(Annotations),
-    25,
+    24,
     gAnnotationsFields,
     "HighlightColor\0UnderlineColor\0SquigglyColor\0StrikeOutColor\0FreeTextColor\0FreeTextBackgroundColor\0FreeTextOpa"
     "city\0FreeTextSize\0FreeTextBorderWidth\0FreeTextAlignment\0PresetColors\0TextIconColor\0LineColor\0PolyLineColor"
-    "\0SquareColor\0CircleColor\0PolygonColor\0InkColor\0InkColors\0InkBorderWidth\0StampColor\0CaretColor\0FileAttachm"
-    "entColor\0TextIconType\0DefaultAuthor",
+    "\0SquareColor\0CircleColor\0PolygonColor\0InkColor\0InkBorderWidth\0StampColor\0CaretColor\0FileAttachmentColor\0T"
+    "extIconType\0DefaultAuthor",
     "color of newly created highlight annotations. Use an #aarrggbb value to set default opacity (00 = transparent, FF "
     "= opaque); #rrggbb is fully opaque\0color of newly created underline annotations. #aarrggbb sets default opacity "
     "the same way as HighlightColor\0color of newly created squiggly underline annotations. #aarrggbb sets default "
@@ -1555,21 +1543,18 @@ static const StructInfo gAnnotationsInfo = {
     "width of free text annotations, in points\0how text is aligned in newly created free text annotations (Text "
     "Alignment in the compact property row): left, center or right. Right-to-left scripts (Arabic, Hebrew, Persian) "
     "want right\0colors offered by the drop-down on the annotation toolbar's buttons, separated by space. Picking one "
-    "sets the color of new annotations of that type. The color a button currently makes annotations in is added when "
-    "it is missing\0color of newly created text (sticky note) annotations\0color of newly created line annotations. If "
-    "not set, the PDF engine's default (red) is used\0color of newly created polyline annotations. If not set, the PDF "
-    "engine's default (red) is used\0color of newly created square annotations. If not set, the PDF engine's default "
-    "(red) is used\0color of newly created circle annotations. If not set, the PDF engine's default (red) is "
-    "used\0color of newly created polygon annotations. If not set, the PDF engine's default (red) is used\0color of "
-    "newly created ink annotations, as #aarrggbb: the alpha is how translucent the stroke is (00 = transparent, FF = "
-    "opaque), so the color is exactly what ends up on the page\0colors offered by the ink button's drop-down, "
-    "separated by space. Use #aarrggbb values: the alpha is the stroke's opacity. The color ink currently draws in is "
-    "added when it is missing\0width of the stroke of new ink annotations, in points\0color of newly created stamp "
-    "annotations. If not set, the PDF engine's default (red) is used\0color of newly created caret annotations. If not "
-    "set, the PDF engine's default (red) is used\0color of newly created file attachment annotations. If not set, the "
-    "PDF engine's default (red) is used\0icon shown for text (sticky note) annotations: comment, help, insert, key, "
-    "new paragraph, note or paragraph. If not set, note is used\0author recorded on newly created annotations. If not "
-    "set, the Windows user name is used; set it to (none) to leave the author out entirely",
+    "sets the color of new annotations of that type\0color of newly created text (sticky note) annotations\0color of "
+    "newly created line annotations. If not set, the PDF engine's default (red) is used\0color of newly created "
+    "polyline annotations. If not set, the PDF engine's default (red) is used\0color of newly created square "
+    "annotations. If not set, the PDF engine's default (red) is used\0color of newly created circle annotations. If "
+    "not set, the PDF engine's default (red) is used\0color of newly created polygon annotations. If not set, the PDF "
+    "engine's default (red) is used\0color of newly created ink annotations. If not set, the PDF engine's default "
+    "(red) is used\0width of the stroke of new ink annotations, in points\0color of newly created stamp annotations. "
+    "If not set, the PDF engine's default (red) is used\0color of newly created caret annotations. If not set, the PDF "
+    "engine's default (red) is used\0color of newly created file attachment annotations. If not set, the PDF engine's "
+    "default (red) is used\0icon shown for text (sticky note) annotations: comment, help, insert, key, new paragraph, "
+    "note or paragraph. If not set, note is used\0author recorded on newly created annotations. If not set, the "
+    "Windows user name is used; set it to (none) to leave the author out entirely",
     false};
 
 static const FieldInfo gExternalViewerFields[] = {
@@ -2068,7 +2053,6 @@ static const FieldInfo gSettingsFields[] = {
     {offsetof(Settings, mouseWheelTurnsPage), SettingType::Bool, false},
     {offsetof(Settings, showDocumentFocusIndicator), SettingType::Bool, false},
     {offsetof(Settings, showAnnotationNotification), SettingType::Bool, true},
-    {offsetof(Settings, showFileNavigateHint), SettingType::Bool, true},
     {offsetof(Settings, showAnnotationAuthorInTooltip), SettingType::Bool, false},
     {offsetof(Settings, showTocPageNumbers), SettingType::Bool, true},
     {offsetof(Settings, showStartPage), SettingType::Bool, true},
@@ -2180,7 +2164,7 @@ static const FieldInfo gSettingsFields[] = {
 };
 static const StructInfo gSettingsInfo = {
     sizeof(Settings),
-    152,
+    151,
     gSettingsFields,
     "\0\0DefaultDisplayMode\0DefaultZoom\0DisableJavaScript\0AllowExternalImages\0EnableTeXEnhancements\0EscToExit\0Ful"
     "lPathInTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0Ho"
@@ -2188,19 +2172,19 @@ static const StructInfo gSettingsInfo = {
     "\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowPageNumberInTabs\0ShowTips\0CustomColors\0ShowToolbar\0Tool"
     "bar\0ToolbarPosition\0SearchUIFloating\0ShowFavorites\0SortFavoritesByName\0ShowToc\0SidebarOnRight\0ShowLinks\0Hi"
     "ghlightFormFields\0ClickEdgeToTurnPage\0DisableLinks\0ExplorerQuickLook\0RememberViewOffsetOnPageTurn\0MouseWheelT"
-    "urnsPage\0ShowDocumentFocusIndicator\0ShowAnnotationNotification\0ShowFileNavigateHint\0ShowAnnotationAuthorInTool"
-    "tip\0ShowTocPageNumbers\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0ScrollLineAmou"
-    "nt\0SaveMemory\0PaddingAfterLastPage\0IgnoreDestinationZoom\0HighlightLinkDestination\0CitationHoverDelay\0ReadAlo"
-    "udVoiceId\0ReadAloudSpeed\0ReadingAutoScrollSpeed\0ReadingBar\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0"
-    "TabWidth\0Theme\0LastLightTheme\0LastDarkTheme\0DocumentColorsFollowTheme\0TocDy\0ToolbarCustomLayout\0ToolbarShow"
-    "ReadAloud\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0Disab"
-    "leAutoLinks\0UseSysColors\0UseTabs\0SelectionToolbar\0SelectionToolbarLayout\0TabsMru\0CtrlTabSimple\0ZoomLevels\0"
-    "ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0MarkdownUI\0\0HtmlUI\0\0ClaudeCode\0"
-    "\0GrokBuild\0\0CodexBuild\0\0AntiGravity\0\0AIChatSidebarDx\0\0TranslateToLang\0TranslateFromLang\0TranslateEngine"
-    "\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Short"
-    "cuts\0\0Themes\0\0TabGroups\0\0CustomScreenDPI\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0Wind"
-    "owPos\0SearchUIWindowPos\0HelpWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek"
-    "\0PropWinPos\0CheckForUpdates\0\0",
+    "urnsPage\0ShowDocumentFocusIndicator\0ShowAnnotationNotification\0ShowAnnotationAuthorInTooltip\0ShowTocPageNumber"
+    "s\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0ScrollLineAmount\0SaveMemory\0Paddin"
+    "gAfterLastPage\0IgnoreDestinationZoom\0HighlightLinkDestination\0CitationHoverDelay\0ReadAloudVoiceId\0ReadAloudSp"
+    "eed\0ReadingAutoScrollSpeed\0ReadingBar\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastL"
+    "ightTheme\0LastDarkTheme\0DocumentColorsFollowTheme\0TocDy\0ToolbarCustomLayout\0ToolbarShowReadAloud\0ToolbarSize"
+    "\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0DisableAutoLinks\0UseSysCol"
+    "ors\0UseTabs\0SelectionToolbar\0SelectionToolbarLayout\0TabsMru\0CtrlTabSimple\0ZoomLevels\0ZoomIncrement\0\0Fixed"
+    "PageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0MarkdownUI\0\0HtmlUI\0\0ClaudeCode\0\0GrokBuild\0\0CodexBu"
+    "ild\0\0AntiGravity\0\0AIChatSidebarDx\0\0TranslateToLang\0TranslateFromLang\0TranslateEngine\0\0Annotations\0\0Ext"
+    "ernalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabG"
+    "roups\0\0CustomScreenDPI\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowP"
+    "os\0HelpWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0CheckFor"
+    "Updates\0\0",
     "\0\0default layout of pages. valid values: automatic, single page, facing, book view, continuous, continuous "
     "facing, continuous book view, page aspect. page aspect (3.7+): first open of a PDF, XPS, DjVu or PostScript file "
     "uses page 1 — taller than wide is continuous + fit width, wider than tall is single page + fit page; a remembered "
@@ -2244,9 +2228,8 @@ static const StructInfo gSettingsInfo = {
     "next / previous page instead of scrolling; combine with RememberViewOffsetOnPageTurn to read zoomed-in pages "
     "without touching the keyboard. Alt + wheel still scrolls, Shift + wheel scrolls horizontally and Ctrl + wheel "
     "zooms\0if true, draw a focus ring around the document when it has keyboard focus (Tab to the page area)\0if true, "
-    "show a tip when hovering an annotation (e.g. \"Highlight annotation. Ctrl+click to edit.\")\0if true, at the end "
-    "of a document show a hint to open the next file in the folder. Closing the hint sets it to false\0if true, show "
-    "the author at the bottom of an annotation tooltip as \"Author: <author>\"\0if true, show page numbers (labels) "
+    "show a tip when hovering an annotation (e.g. \"Highlight annotation. Ctrl+click to edit.\")\0if true, show the "
+    "author at the bottom of an annotation tooltip as \"Author: <author>\"\0if true, show page numbers (labels) "
     "right-aligned on bookmark / table-of-contents entries\0if true, show a list of frequently read documents when no "
     "document is loaded\0width of the favorites / bookmarks sidebar in screen pixels, as last resized (0 means the "
     "default)\0scrollbar mode: windows (standard Windows scrollbar), smart (overlay scrollbar with auto-hide), overlay "

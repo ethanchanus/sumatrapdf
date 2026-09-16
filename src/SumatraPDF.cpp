@@ -4941,7 +4941,6 @@ void LoadModelIntoTab(WindowTab* tab) {
     tab->canvasRc = win->canvasRc;
 
     win->showSelection = tab->selectionOnPage != nullptr;
-    ResetSelectionToolbarDismissed(win);
     if (win->showSelection) {
         ShowSelectionToolbar(win);
     }
@@ -7147,19 +7146,7 @@ void DismissNextFileScrollHint(MainWindow* win) {
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifNextFileHint);
 }
 
-static void OnNextFileHintClosed(NotificationClosedEvent* ev) {
-    RemoveNotification(ev->wnd);
-    if (ev->reason != NotifCloseReason::User) {
-        return;
-    }
-    gSettings->showFileNavigateHint = false;
-    ScheduleSaveSettings();
-}
-
 static void MaybeShowNextFileScrollHint(MainWindow* win) {
-    if (!gSettings->showFileNavigateHint) {
-        return;
-    }
     if (!IsMainWindowValidAndNotClosing(win) || !win->IsDocLoaded() || win->IsCurrentTabAbout()) {
         return;
     }
@@ -7190,7 +7177,6 @@ static void MaybeShowNextFileScrollHint(MainWindow* win) {
     args.timeoutMs = kNotifNoTimeout;
     args.tab = win->CurrentTab();
     args.richMsg = rich;
-    args.onClosed = MkFunc1Void(OnNextFileHintClosed);
     // what the window text (and thus NotificationGetMessageTemp) reports
     args.msg = fmt("%s %s · %d/%d · %s", Tr("open"), name, n, m, Tr("browse"));
     ShowNotification(args);
@@ -9503,12 +9489,14 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         annot->bounds = GetBounds(annot);
         VecAppend(created, annot);
     }
+    RefreshAnnotationLists(tab);
 
     // copy selection to clipboard so that user can use Ctrl-V to set contents
     if (args->copyToClipboard) {
         CopySelectionToClipboard(win);
     }
-    // callers refresh lists and rerender; doing it here too aborted and redid the page render
+    MainWindowRerender(win);
+    ToolbarUpdateStateForWindow(win, true);
     return annot;
 }
 
@@ -11107,32 +11095,34 @@ static void SetAnnotCreateArgsFromCommand(AnnotCreateArgs& args, CustomCommand* 
         args.interiorCol = interiorCol->colorVal;
     }
 
-    if (GetCommandArg(cmd, kCmdArgOpacity)) {
-        args.opacity = GetCommandIntArg(cmd, kCmdArgOpacity, 100);
-        setMinMax(args.opacity, 0, 100);
-    }
+    args.opacity = GetCommandIntArg(cmd, kCmdArgOpacity, 100);
+    setMinMax(args.opacity, 0, 100);
 
-    int textSize = GetCommandIntArg(cmd, kCmdArgTextSize, -1);
-    if (textSize >= 0) {
+    args.textSize = GetCommandIntArg(cmd, kCmdArgTextSize, -1);
+    if (args.textSize >= 0) {
         // set some reasonable limits
-        setMinMax(textSize, 5, 128);
-        args.textSize = textSize;
+        setMinMax(args.textSize, 5, 128);
     }
 
-    int borderWidth = GetCommandIntArg(cmd, kCmdArgBorderWidth, -1);
-    if (borderWidth >= 0) {
+    args.borderWidth = GetCommandIntArg(cmd, kCmdArgBorderWidth, -1);
+    if (args.borderWidth >= 0) {
         // set some reasonable limits
-        setMinMax(borderWidth, 0, 128);
-        args.borderWidth = borderWidth;
+        setMinMax(args.borderWidth, 0, 128);
     }
 
-    int quadding = QuaddingFromName(GetCommandStringArg(cmd, kCmdArgAlignment, {}));
-    if (quadding >= 0) {
-        args.quadding = quadding;
-    }
+    args.quadding = QuaddingFromName(GetCommandStringArg(cmd, kCmdArgAlignment, {}));
 }
 
 void SetAnnotCreateArgs(AnnotCreateArgs& args, CustomCommand* cmd) {
+    // note: test the arguments, not `cmd->id != cmd->origId`. A command without
+    // arguments usually keeps its original id, but not always: a Shortcuts entry
+    // that would collide with an earlier one gets a generated id (#5869).
+    if (cmd && cmd->firstArg) {
+        // a command definition doesn't use values from settings
+        // must specify everything explicitly
+        SetAnnotCreateArgsFromCommand(args, cmd);
+        return;
+    }
     auto& a = gSettings->annotations;
     ParsedColor* col = nullptr;
     ParsedColor* bgCol = nullptr;
@@ -11185,14 +11175,6 @@ void SetAnnotCreateArgs(AnnotCreateArgs& args, CustomCommand* cmd) {
     }
     if (col && col->parsedOk) {
         args.col = *col;
-    }
-
-    // a command's arguments (e.g. Shift+A's "openedit", or a color) override
-    // the settings; ones it doesn't give keep them (#6197). Test the arguments,
-    // not `cmd->id != cmd->origId`: a colliding Shortcuts entry gets a generated
-    // id even without arguments (#5869).
-    if (cmd && cmd->firstArg) {
-        SetAnnotCreateArgsFromCommand(args, cmd);
     }
 }
 
@@ -12523,6 +12505,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             FindToggleMatchWholeWord(win);
             break;
 
+        case CmdFindToggleRegex:
+            FindToggleRegex(win);
+            break;
+
         case CmdFindNextSel:
             FindSelection(win, TextSearch::Direction::Forward);
             break;
@@ -13191,32 +13177,6 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             return 0;
         }
 
-        case CmdAnnotationHighlightBrush: {
-            // The highlighter is a mode: every text selection finished while
-            // it's on is highlighted (the placement commit), until Esc. Text
-            // already selected when it's picked is highlighted right away.
-            if (!win || !tab) {
-                return 0;
-            }
-            if (isAnnotationPlacementCommit || tab->selectionOnPage) {
-                AnnotCreateArgs args{annotType};
-                SetAnnotCreateArgs(args, cmd);
-                if (MakeAnnotationsFromSelection(tab, &args)) {
-                    // not selected: that would take the next press, which is
-                    // meant to select more text
-                    StopSelectTextWithKeyboard(win);
-                    DeleteOldSelectionInfo(win, true);
-                    RefreshAnnotationLists(tab);
-                    MainWindowRerender(win);
-                    ToolbarUpdateStateForWindow(win, true);
-                }
-            }
-            if (!isAnnotationPlacementCommit) {
-                StartAnnotationPlacement(win, invokedCmdId);
-            }
-            return 0;
-        }
-
         case CmdCreateAnnotHighlight:
             [[fallthrough]];
         case CmdCreateAnnotSquiggly:
@@ -13252,6 +13212,8 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdCreateAnnotPolyLine:
             [[fallthrough]];
         case CmdCreateAnnotInk:
+            [[fallthrough]];
+        case CmdAnnotationHighlightBrush:
             [[fallthrough]];
         case CmdCreateAnnotRedact:
             [[fallthrough]];
@@ -13383,6 +13345,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         return 0;
     }
     bool openEdit = GetCommandBoolArg(cmd, kCmdArgOpenEdit, false);
+    if (!openEdit && win->isFullScreen) {
+        AnnotationType t = lastCreatedAnnot->type;
+        openEdit = t == AnnotationType::Highlight || t == AnnotationType::Underline || t == AnnotationType::Squiggly ||
+                   t == AnnotationType::StrikeOut;
+    }
     // CmdCreateAnnot* turns on Edit PDF only when the command has `openedit`
     // (Shift+A / Shift+U). Paste and insert-image still enter the mode.
     bool enterEditPdf = true;
@@ -13403,18 +13370,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
     MainWindowRerender(win);
     ToolbarUpdateStateForWindow(win, true);
 
-    // in Edit PDF a new annotation is selected, so it can be moved, resized, or
-    // edited from the property row; outside it selection is only a blue border
-    if (win->pdfAnnotationsToolbarEnabled) {
-        SetSelectedAnnotation(tab, lastCreatedAnnot);
-    }
+    // every new annotation is selected, so it can be moved, resized, or edited
+    // from the compact property row
+    SetSelectedAnnotation(tab, lastCreatedAnnot);
     // a new free text annotation is a box of placeholder text: put the caret
     // in it rather than make the user find it again. Not for a paste, which
     // brings the text it was copied from.
     if (cmdId == CmdCreateAnnotFreeText && lastCreatedAnnot->type == AnnotationType::FreeText) {
         StartFreeTextInPlaceEdit(win, lastCreatedAnnot);
     } else if (openEdit) {
-        // in fullscreen too: Contents used to never open there (issue #6111)
+        // openedit, and F11 markup: Contents used to never open (issue #6111)
         uitask::Post(MkFunc0(StartSelectedAnnotContentsEdit, win), "StartAnnotContentsEdit");
     }
     return 0;
@@ -17501,14 +17466,6 @@ static TempStr BuildSubmitUrlTemp() {
     return ToStr(url);
 }
 
-#define kOfficialSigner "Krzysztof Kowalczyk"
-
-// crashes from third-party builds (forks, distro rebuilds) aren't ours to fix
-static bool IsOfficialBuild() {
-    TempStr signer = GetExecutableSignerTemp(GetSelfExePathTemp());
-    return str::Eq(signer, StrL(kOfficialSigner));
-}
-
 static void InstallSumatraCrashHandler(bool localOnly) {
     if (gIsAsanBuild) {
         return;
@@ -17533,15 +17490,9 @@ static void InstallSumatraCrashHandler(bool localOnly) {
     cfg.uploadCrashes = !gIsAsanBuild;
     // a debug report carries too much info to send from a release build
     cfg.uploadDebugReports = gIsPreReleaseBuild;
-    if (!gIsDebugBuild && !IsOfficialBuild()) {
-        log(StrL("InstallSumatraCrashHandler: not signed by us, not uploading\n"));
-        cfg.uploadCrashes = false;
-        cfg.uploadDebugReports = false;
-    }
     cfg.getCrashComment = GetCrashComment;
     cfg.onCrashBegin = OnCrashBegin;
     cfg.showCrashMessage = ShowCrashHandlerMessage;
-    cfg.canEndCrashedThread = TtsOnEngineCrash;
 
     InstallCrashHandler(cfg);
     Arena* a = CrashHandlerArena();

@@ -232,21 +232,12 @@ export async function testit(): Promise<void> {
     const canvasOrigin = clientToScreen(canvas, 0, 0);
     const topOverlay = state.overlay.rect;
     const topAnnot = state.overlay.anchor;
-    // a highlight's card is centered on the mouse x, kept inside the canvas
-    const canvasRight = canvasOrigin.x + getClientRect(canvas).right;
-    const centeredX = Math.min(
-      Math.max(canvasOrigin.x + editCenterX - Math.floor(topOverlay.dx / 2), canvasOrigin.x),
-      canvasRight - topOverlay.dx,
-    );
     if (
       state.overlay.above ||
-      Math.abs(topOverlay.x - centeredX) > 1 ||
+      topOverlay.x !== canvasOrigin.x + topAnnot.x ||
       topOverlay.y < canvasOrigin.y + topAnnot.y + topAnnot.dy
     ) {
-      throw new Error(
-        `pdf-edit-toolbar-interaction: top annotation card is not centered on the mouse below it ` +
-          `(x=${topOverlay.x} want ${centeredX})\n${state.raw}`,
-      );
+      throw new Error(`pdf-edit-toolbar-interaction: top annotation card is not left-aligned below it\n${state.raw}`);
     }
 
     const bottomAnnot = state.screens[1];
@@ -306,19 +297,20 @@ export async function testit(): Promise<void> {
       throw new Error(`pdf-edit-toolbar-interaction: compact property row did not appear\n${state.raw}`);
     }
 
-    // while an annotation is selected, other annotations get no hover and a
-    // click on one only deselects the selected one
-    const bottomX = bottomAnnot.x + Math.floor(bottomAnnot.dx / 2);
-    const bottomY = bottomAnnot.y + Math.floor(bottomAnnot.dy / 2);
-    await moveAndWaitForHover(client, canvas, bottomX, bottomY, false);
-    await clickAt(canvas, bottomX, bottomY, 200, MK_CONTROL);
-    state = await annotState(client);
-    if (state.selected) {
-      throw new Error("pdf-edit-toolbar-interaction: a click on another annotation did more than deselect");
-    }
-
-    state = await moveAndWaitForHover(client, canvas, bottomX, bottomY, true);
-    await clickAt(canvas, bottomX, bottomY, 200, MK_CONTROL);
+    state = await moveAndWaitForHover(
+      client,
+      canvas,
+      bottomAnnot.x + Math.floor(bottomAnnot.dx / 2),
+      bottomAnnot.y + Math.floor(bottomAnnot.dy / 2),
+      true,
+    );
+    await clickAt(
+      canvas,
+      bottomAnnot.x + Math.floor(bottomAnnot.dx / 2),
+      bottomAnnot.y + Math.floor(bottomAnnot.dy / 2),
+      200,
+      MK_CONTROL,
+    );
     state = await annotState(client);
     if (!state.selected || !state.selectedHover) {
       throw new Error("pdf-edit-toolbar-interaction: later Ctrl+click did not select the highlight");

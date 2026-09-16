@@ -588,8 +588,7 @@ static TempStr MarkupAnnotsResultTemp(Str action, int x, int y, int* exitCodeOut
         bool isStamp = tp == AnnotationType::Stamp;
         bool isRedact = tp == AnnotationType::Redact;
         bool isFileAttachment = tp == AnnotationType::FileAttachment;
-        bool isFreeText = tp == AnnotationType::FreeText;
-        if (!isMarkup && !isShape && !isStamp && !isRedact && !isFileAttachment && !isFreeText) {
+        if (!isMarkup && !isShape && !isStamp && !isRedact && !isFileAttachment) {
             continue;
         }
         Str typeName = StrL("other");
@@ -617,8 +616,6 @@ static TempStr MarkupAnnotsResultTemp(Str action, int x, int y, int* exitCodeOut
             typeName = StrL("Redact");
         } else if (tp == AnnotationType::FileAttachment) {
             typeName = StrL("FileAttachment");
-        } else if (tp == AnnotationType::FreeText) {
-            typeName = StrL("FreeText");
         }
         if (isRedact) {
             Vec<RectF> quads = GetQuadPointsAsRect(a);
@@ -633,7 +630,7 @@ static TempStr MarkupAnnotsResultTemp(Str action, int x, int y, int* exitCodeOut
             n++;
             continue;
         }
-        if (isShape || isStamp || isFileAttachment || isFreeText) {
+        if (isShape || isStamp || isFileAttachment) {
             RectF r = GetRect(a);
             Rect screen = dm->CvtToScreen(PageNo(a), r);
             out.Append(fmt("type=%s page=%d rect=%g,%g,%g,%g screen=%d,%d,%d,%d\n", typeName, PageNo(a), r.x, r.y, r.dx,
@@ -644,11 +641,7 @@ static TempStr MarkupAnnotsResultTemp(Str action, int x, int y, int* exitCodeOut
             if (tp == AnnotationType::PolyLine || tp == AnnotationType::Polygon) {
                 Vec<PointF> pts = GetVertices(a);
                 bool closed = len(pts) > 2 && pts[0] == VecLast(pts);
-                out.Append(fmt("polyline vertices=%d closed=%d pts=", len(pts), closed ? 1 : 0));
-                for (int i = 0; i < len(pts); i++) {
-                    out.Append(fmt(i == 0 ? "%g,%g" : ";%g,%g", pts[i].x, pts[i].y));
-                }
-                out.Append(StrL("\n"));
+                out.Append(fmt("polyline vertices=%d closed=%d\n", len(pts), closed ? 1 : 0));
             }
             if (tp == AnnotationType::Ink) {
                 Vec<int> strokeCounts;
@@ -656,25 +649,12 @@ static TempStr MarkupAnnotsResultTemp(Str action, int x, int y, int* exitCodeOut
                 GetInkList(a, strokeCounts, points);
                 out.Append(fmt("ink strokes=%d points=%d opacity=%d width=%d\n", len(strokeCounts), len(points),
                                Opacity(a), BorderWidth(a)));
-                // extent of the stroke points, without line width
-                if (len(points) > 0) {
-                    PointF lo = points[0];
-                    PointF hi = points[0];
-                    for (PointF p : points) {
-                        lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
-                        hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
-                    }
-                    out.Append(fmt("inkRect=%g,%g,%g,%g\n", lo.x, lo.y, hi.x - lo.x, hi.y - lo.y));
-                }
             }
             n++;
             continue;
         }
         Vec<RectF> quads = GetQuadPointsAsRect(a);
         out.Append(fmt("type=%s page=%d quads=%d\n", typeName, PageNo(a), len(quads)));
-        out.Append(StrL("color="));
-        SerializePdfColor(GetColor(a), out);
-        out.Append(StrL("\n"));
         for (int i = 0; i < len(quads); i++) {
             RectF r = quads[i];
             out.Append(fmt("rect=%g,%g,%g,%g\n", r.x, r.y, r.dx, r.dy));
@@ -899,7 +879,6 @@ enum class ControlCmd : u16 {
     TestReadingAutoScroll = 97,
     TestReadingBar = 98,
     TestSeedTextSelection = 99,
-    TestTtsEngineCrash = 100,
 };
 
 enum class ControlArgType : u16 {
@@ -1986,20 +1965,6 @@ static void ExecuteControlRequest(ControlRequest* req) {
             log(StrL("ControlCmd::CrashMe\n"));
             CrashMe();
             break;
-
-        case ControlCmd::TestTtsEngineCrash: {
-            Str action = StringArg(req, 0);
-            if (str::EqI(action, StrL("crash"))) {
-                str::ReplaceWithCopy(&gSettings->readAloudVoiceId, StrL("test-voice"));
-                if (!TtsTestEngineCrash()) {
-                    AppendTestResult(req, 1, StrL("FAIL could not start the crashing thread"));
-                    break;
-                }
-            }
-            TempStr state = fmt("crashed=%d voice='%s'", (int)TtsEngineCrashed(), gSettings->readAloudVoiceId);
-            AppendTestResult(req, 0, state);
-            break;
-        }
 
         case ControlCmd::TestCanvasFlags: {
             Str action = StringArg(req, 0);

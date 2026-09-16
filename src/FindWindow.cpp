@@ -157,8 +157,8 @@ struct FindWindowWnd : WindowBase {
     Spacer* pagesResultsGap = nullptr;
     Padding* rootPadding = nullptr;
     int layoutDpi = 96;
-    // prev / next / match-case / match-whole-word / unpin(dock)
-    VirtIconButton* btns[5]{};
+    // prev / next / regex / match-case / match-whole-word / unpin(dock)
+    VirtIconButton* btns[6]{};
     VirtListBox* results = nullptr;
     StrVec filterWords; // search term(s) to highlight in snippets
     Vec<u8> hlScratch;  // reused highlight mask for DrawMaybeHighlightedText
@@ -238,6 +238,8 @@ static TempStr FindWindowButtonTooltip(int cmd) {
             return AppendCmdAccel(Tr("Match Case"), cmd);
         case CmdFindToggleMatchWholeWord:
             return AppendCmdAccel(Tr("Match Whole Word"), cmd);
+        case CmdFindToggleRegex:
+            return AppendCmdAccel(Tr("Use Regular Expression"), cmd);
         case kFindWinPinCmdId:
             return Tr("Dock to toolbar");
     }
@@ -251,13 +253,13 @@ FindWindowWnd::~FindWindowWnd() {
 // the pixmaps belong to the icon cache, which re-renders them for the current
 // theme and size
 void FindWindowWnd::UpdateButtonIcons(int dpi) {
-    static const char* icons[5] = {gIconChevronUp, gIconChevronDown, gIconMatchCase, gIconMatchWholeWord,
-                                   gIconArrowsDiagonalMinimize};
+    static const char* icons[6] = {gIconChevronUp,      gIconChevronDown,          gIconRegex,
+                                   gIconMatchCase,      gIconMatchWholeWord, gIconArrowsDiagonalMinimize};
     if (dpi <= 0) {
         dpi = GetDpi();
     }
     int isz = RoundUp(DpiScaleByDpi(dpi, 16), 4);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         if (btns[i]) {
             btns[i]->pixmap = GetCachedPixmapForSvg(Str(icons[i]), isz, isz);
         }
@@ -273,10 +275,10 @@ static void FindWindowButtonClicked(FindWindowWnd* w, VirtMouseEvent* ev) {
 }
 
 void FindWindowWnd::CreateButtons() {
-    static const int cmds[5] = {CmdFindPrev, CmdFindNext, CmdFindToggleMatchCase, CmdFindToggleMatchWholeWord,
-                                kFindWinPinCmdId};
+    static const int cmds[6] = {CmdFindPrev,          CmdFindNext,      CmdFindToggleRegex,
+                                CmdFindToggleMatchCase, CmdFindToggleMatchWholeWord, kFindWinPinCmdId};
     int pad = DpiScale(4);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         auto* b = new VirtIconButton();
         b->id = cmds[i];
         b->padding = Insets{pad, pad, pad, pad};
@@ -995,6 +997,9 @@ void FindWindowWnd::OnCommand(WindowBase::CommandEvent* ev) {
         case CmdFindToggleMatchWholeWord:
             FindToggleMatchWholeWord(win);
             break;
+        case CmdFindToggleRegex:
+            FindToggleRegex(win);
+            break;
         case kFindWinPinCmdId:
             ToggleFloatingFindUI(win); // dock back to the compact toolbar bar
             break;
@@ -1071,6 +1076,7 @@ void ShowFindWindow(MainWindow* win) {
     w->UpdatePagesLabel();
     FindWindowSetMatchCaseChecked(win, win->findMatchCase);
     FindWindowSetMatchWholeWordChecked(win, win->findMatchWholeWord);
+    FindWindowSetRegexChecked(win, win->findUseRegex);
     PositionFindWindow(w);
     // Hidden-window DPI queries keep the caller's scale; use the monitor we
     // actually placed the window on (issue #5998).
@@ -1139,8 +1145,9 @@ void FindWindowSetStatus(MainWindow* win, Str s, int totalHits) {
 }
 
 // idx into FindWindowWnd::btns
-constexpr int kBtnMatchCase = 2;
-constexpr int kBtnMatchWholeWord = 3;
+constexpr int kBtnRegex = 2;
+constexpr int kBtnMatchCase = 3;
+constexpr int kBtnMatchWholeWord = 4;
 
 static void FindWindowSetBtnChecked(MainWindow* win, int idx, bool checked) {
     if (!win->findWindow) {
@@ -1160,6 +1167,10 @@ void FindWindowSetMatchCaseChecked(MainWindow* win, bool checked) {
 
 void FindWindowSetMatchWholeWordChecked(MainWindow* win, bool checked) {
     FindWindowSetBtnChecked(win, kBtnMatchWholeWord, checked);
+}
+
+void FindWindowSetRegexChecked(MainWindow* win, bool checked) {
+    FindWindowSetBtnChecked(win, kBtnRegex, checked);
 }
 
 // repopulate the results list from win->findMatches (no-op if not visible).

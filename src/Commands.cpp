@@ -322,6 +322,7 @@ static SeqStrings gCommandNames =
     "CmdAutomaticallyScrollSlower\0"
     "CmdToggleReadingBar\0"
     "CmdToggleReadingBarInvert\0"
+    "CmdFindToggleRegex\0"
     "CmdNone\0"
     "CmdFileHistory\0"
     "CmdFavorite\0"
@@ -636,6 +637,7 @@ static i32 gCommandIds[] = {
     CmdAutomaticallyScrollSlower,
     CmdToggleReadingBar,
     CmdToggleReadingBarInvert,
+    CmdFindToggleRegex,
     CmdNone,
     CmdFileHistory,
     CmdFavorite,
@@ -936,7 +938,7 @@ SeqStrings gCommandDescriptions =
     "Search with Google Lens\0"
     "Navigate Thumbnails\0"
     "Show Comment\0"
-    "Highlighter\0"
+    "Highlight with Brush\0"
     "Find Annotation\0"
     "Open File Without History...\0"
     "Copy Selection As Image\0"
@@ -950,6 +952,7 @@ SeqStrings gCommandDescriptions =
     "Automatically Scroll Slower\0"
     "Reading Bar\0"
     "Reading Bar Invert\0"
+    "Find: Toggle Regex\0"
     "Do nothing\0"
     "Open Recent File\0"
     "Go to Favorite\0"

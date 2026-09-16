@@ -372,6 +372,9 @@
     <ClInclude Include="..\src\RefHover.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\RegexEngine.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\RegistryPreview.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -981,6 +984,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\RefHoverTextDetect.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\RegexEngine.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\RegistryInstaller.cpp">

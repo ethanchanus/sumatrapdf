@@ -855,10 +855,9 @@ const annotations: Field[] = [
   field(
     "PresetColors",
     Str,
-    "#ffff00 #8bf05d #99defa #f199d2 #e24745 #ff0000 #0000ff #000000",
+    "#ffff00 #8bf05d #99defa #f199d2 #e24745",
     "colors offered by the drop-down on the annotation toolbar's buttons, separated by space. " +
-      "Picking one sets the color of new annotations of that type. The color a button currently makes " +
-      "annotations in is added when it is missing",
+      "Picking one sets the color of new annotations of that type",
   ).ver("3.7"),
   field("TextIconColor", Color, "", "color of newly created text (sticky note) annotations"),
   field(
@@ -894,18 +893,10 @@ const annotations: Field[] = [
   field(
     "InkColor",
     Color,
-    rgba(0xff, 0xff, 0x0, 0x66),
-    "color of newly created ink annotations, as #aarrggbb: the alpha is how translucent the stroke is " +
-      "(00 = transparent, FF = opaque), so the color is exactly what ends up on the page",
+    "",
+    "color of newly created ink annotations. If not set, the PDF engine's default (red) is used",
   ).ver("3.7"),
-  field(
-    "InkColors",
-    Str,
-    "#66ffff00 #668bf05d #6699defa #66f199d2 #66e24745",
-    "colors offered by the ink button's drop-down, separated by space. Use #aarrggbb values: " +
-      "the alpha is the stroke's opacity. The color ink currently draws in is added when it is missing",
-  ).ver("3.7"),
-  field("InkBorderWidth", Int, 16, "width of the stroke of new ink annotations, in points").ver("3.7"),
+  field("InkBorderWidth", Int, 6, "width of the stroke of new ink annotations, in points").ver("3.7"),
   field(
     "StampColor",
     Color,
@@ -1419,12 +1410,6 @@ const globalPrefs: Field[] = [
     Bool,
     true,
     'if true, show a tip when hovering an annotation (e.g. "Highlight annotation. Ctrl+click to edit.")',
-  ).ver("3.7"),
-  field(
-    "ShowFileNavigateHint",
-    Bool,
-    true,
-    "if true, at the end of a document show a hint to open the next file in the folder. Closing the hint sets it to false",
   ).ver("3.7"),
   field(
     "ShowAnnotationAuthorInTooltip",
@@ -1978,7 +1963,6 @@ const globalPrefsLayout = [
   "MouseWheelTurnsPage",
   "ShowDocumentFocusIndicator",
   "ShowAnnotationNotification",
-  "ShowFileNavigateHint",
   "ShowAnnotationAuthorInTooltip",
   "ShowTocPageNumbers",
   "ShowStartPage",

@@ -14,18 +14,7 @@ extern Kind kNotifPageInfo;
 extern Kind kNotifAdHoc;
 extern Kind kNotifLazyLayout;
 
-enum class NotifCloseReason {
-    User,    // close button
-    Timeout, // timeoutMs elapsed
-    Program, // CloseNotification()
-};
-
-struct NotificationClosedEvent {
-    NotificationWnd* wnd = nullptr;
-    NotifCloseReason reason = NotifCloseReason::Program;
-};
-
-using NotificationClosed = Func1<NotificationClosedEvent*>;
+using NotificationWndRemoved = Func1<NotificationWnd*>;
 
 constexpr const int kNotifDefaultTimeOut = 1000 * 3; // 3 seconds
 constexpr const int kNotif5SecsTimeOut = 1000 * 5;
@@ -76,9 +65,7 @@ struct NotificationCreateArgs {
     // if set, the notification is only shown while this tab is the active tab
     // (hidden when switching to another tab in the same window)
     WindowTab* tab = nullptr;
-    // called on close (button, timeout, CloseNotification()) instead of the
-    // default removal; must call RemoveNotification(ev->wnd)
-    NotificationClosed onClosed;
+    NotificationWndRemoved onRemoved;
 };
 
 void NotificationUpdateMessage(NotificationWnd* wnd, Str msg, int timeoutInMS = 0, bool highlight = false);

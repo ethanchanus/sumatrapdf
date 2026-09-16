@@ -208,10 +208,6 @@ ShowDocumentFocusIndicator = false
 ; Ctrl+click to edit.") (introduced in version 3.7)
 ShowAnnotationNotification = true
 
-; if true, at the end of a document show a hint to open the next file in the
-; folder. Closing the hint sets it to false (introduced in version 3.7)
-ShowFileNavigateHint = true
-
 ; if true, show the author at the bottom of an annotation tooltip as "Author:
 ; <author>" (introduced in version 3.7)
 ShowAnnotationAuthorInTooltip = false
@@ -792,9 +788,8 @@ Annotations [
 
     ; colors offered by the drop-down on the annotation toolbar's buttons,
     ; separated by space. Picking one sets the color of new annotations of that
-    ; type. The color a button currently makes annotations in is added when it
-    ; is missing (introduced in version 3.7)
-    PresetColors = #ffff00 #8bf05d #99defa #f199d2 #e24745 #ff0000 #0000ff #000000
+    ; type (introduced in version 3.7)
+    PresetColors = #ffff00 #8bf05d #99defa #f199d2 #e24745
 
     ; color of newly created text (sticky note) annotations
     TextIconColor = 
@@ -819,19 +814,13 @@ Annotations [
     ; default (red) is used (introduced in version 3.7)
     PolygonColor = 
 
-    ; color of newly created ink annotations, as #aarrggbb: the alpha is how
-    ; translucent the stroke is (00 = transparent, FF = opaque), so the color is
-    ; exactly what ends up on the page (introduced in version 3.7)
-    InkColor = #66ffff00
-
-    ; colors offered by the ink button's drop-down, separated by space. Use
-    ; #aarrggbb values: the alpha is the stroke's opacity. The color ink
-    ; currently draws in is added when it is missing (introduced in version 3.7)
-    InkColors = #66ffff00 #668bf05d #6699defa #66f199d2 #66e24745
+    ; color of newly created ink annotations. If not set, the PDF engine's
+    ; default (red) is used (introduced in version 3.7)
+    InkColor = 
 
     ; width of the stroke of new ink annotations, in points (introduced in
     ; version 3.7)
-    InkBorderWidth = 16
+    InkBorderWidth = 6
 
     ; color of newly created stamp annotations. If not set, the PDF engine's
     ; default (red) is used (introduced in version 3.7)

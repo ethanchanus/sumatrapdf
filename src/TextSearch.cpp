@@ -8,6 +8,7 @@
 #include "EngineBase.h"
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
+#include "RegexEngine.h"
 #include "TextSearch.h"
 
 // Fetch page text for search. When *abortSearch is set, the caller should stop
@@ -68,6 +69,10 @@ void TextSearch::Clear() {
     str::FreePtr(&lastText);
     findTextLen = 0;
     anchorLen = 0;
+    RegexFree(regexProgram);
+    regexProgram = nullptr;
+    str::FreePtr(&regexProgramFor);
+    regexError = false;
     Reset();
 }
 
@@ -87,6 +92,23 @@ int TextSearch::GetSearchHitStartPageNo() const {
 }
 
 void TextSearch::SetText(Str text) {
+    if (this->regex) {
+        // regex patterns are used verbatim: none of the plain-text anchor
+        // extraction / leading-or-trailing-space word-boundary heuristics
+        // below apply to them
+        this->matchWordStart = false;
+        this->matchWordEnd = false;
+        if (str::Eq(this->lastText, text)) {
+            return;
+        }
+        this->Clear();
+        this->lastText = str::Dup(text);
+        this->findText = str::Dup(text);
+        this->findTextLen = Utf8CodepointCount(this->findText);
+        markAllPagesNonSkip(pagesToSkip);
+        return;
+    }
+
     // search text starting with a single space enables the 'Match word start'
     // and search text ending in a single space enables the 'Match word end' option
     // (that behavior already "kind of" exists without special treatment, but
@@ -169,6 +191,18 @@ void TextSearch::SetMatchWholeWord(bool newMatchWholeWord) {
     // matchWordStart/matchWordEnd are recomputed from matchWholeWord on the next
     // SetText() (the re-search after a toggle always calls it), so we only need
     // to invalidate the per-page skip cache here, like SetMatchCase().
+    markAllPagesNonSkip(pagesToSkip);
+}
+
+void TextSearch::SetMatchRegex(bool newRegex) {
+    if (regex == newRegex) {
+        return;
+    }
+    this->regex = newRegex;
+    RegexFree(regexProgram);
+    regexProgram = nullptr;
+    str::FreePtr(&regexProgramFor);
+    regexError = false;
     markAllPagesNonSkip(pagesToSkip);
 }
 
@@ -276,9 +310,22 @@ void TextSearch::SetLastResult(TextSelection* sel) {
     forward = true;
 }
 
-// case-insensitive search also ignores diacritics: "lacz" finds "Łącz"
-static int FoldCaseForSearch(int c) {
-    return FoldDiacriticsRune(FoldCaseRune(c));
+// Locale-independent Unicode case folding for search. CharLowerW folds accented
+// letters (e.g. É->é, Ş->ş) regardless of the CRT locale, unlike towlower() or
+// the ASCII-only fast paths we used before.
+int FoldCaseForSearch(int c) {
+    // U+0130 (İ, Latin capital I with dot above) lowercases to 'i' under
+    // standard Unicode case folding, but CharLowerW only does this under a
+    // Turkish system locale and otherwise leaves it unchanged -- so searching
+    // "ibradı" wouldn't find "İbradı" on non-Turkish systems (issue #5597).
+    // Fold it explicitly so search is case-insensitive regardless of locale.
+    if (c == 0x0130) {
+        return L'i';
+    }
+    if (c > 0 && c <= 0xffff) {
+        return WCharToLower((wchar_t)c);
+    }
+    return c;
 }
 
 // German ß (sharp s, U+00DF) is spelled "ss" and the two are often used
@@ -613,6 +660,78 @@ static int GetNextIndex(int textLen, int offset, bool forward) {
     return idx;
 }
 
+void TextSearch::EnsureRegexCompiled() {
+    if (str::Eq(regexProgramFor, findText)) {
+        return; // already attempted (successfully or not) for this pattern
+    }
+    RegexFree(regexProgram);
+    regexProgram = RegexCompile(findText);
+    regexError = (regexProgram == nullptr);
+    str::ReplaceWithCopy(&regexProgramFor, findText);
+}
+
+// decodes `s` (UTF-8) into a flat array of Unicode codepoints, since the regex
+// engine matches whole codepoints (e.g. for '.' and character classes)
+static void DecodeToCodepoints(Str s, Vec<int>& out) {
+    VecReset(out);
+    int byteIdx = 0;
+    while (byteIdx < len(s)) {
+        int cp = Utf8CodepointNext(s, byteIdx);
+        VecAppend(out, cp);
+    }
+}
+
+// regex-mode counterpart of the plain-text matching in FindTextInPage: unlike
+// plain-text search, a regex match never spans a page break
+bool TextSearch::FindRegexInPage(int pageNo, TextSearch::PageAndOffset* finalGlyph) {
+    EnsureRegexCompiled();
+    if (regexError) {
+        return false;
+    }
+
+    Vec<int> cps;
+    DecodeToCodepoints(pageText, cps);
+    int n = len(cps);
+
+    int mStart = 0;
+    int mEnd = 0;
+    bool found = false;
+    if (forward) {
+        found = RegexSearch(regexProgram, VecData(cps), n, findIndex, n, matchCase, &mStart, &mEnd);
+    } else {
+        // "find previous": the rightmost match starting before findIndex. Scan
+        // forward collecting matches, advancing past each one (so overlapping
+        // and zero-length matches can't stall), and keep the last one found.
+        int pos = 0;
+        while (pos < findIndex) {
+            int s, e;
+            if (!RegexSearch(regexProgram, VecData(cps), n, pos, findIndex, matchCase, &s, &e)) {
+                break;
+            }
+            mStart = s;
+            mEnd = e;
+            found = true;
+            pos = (e > s) ? e : s + 1;
+        }
+    }
+    if (!found) {
+        return false;
+    }
+
+    searchHitStartAt = pageNo;
+    StartAt(pageNo, mStart);
+    SelectUpTo(pageNo, mEnd);
+    findIndex = forward ? mEnd : mStart;
+    if (mEnd == mStart) {
+        findIndex += forward ? 1 : -1; // zero-length match: force progress next time
+    }
+
+    if (finalGlyph) {
+        *finalGlyph = {pageNo, mEnd};
+    }
+    return result.len != 0;
+}
+
 bool TextSearch::FindTextInPage(int pageNo, TextSearch::PageAndOffset* finalGlyph) {
     if (len(findText) == 0) {
         return false;
@@ -624,6 +743,10 @@ bool TextSearch::FindTextInPage(int pageNo, TextSearch::PageAndOffset* finalGlyp
     // get here with pageNo != 0 the findText has already been set so I didn't add
     // a findText = engine->GetTextForPage(findPage) here.
     findPage = pageNo;
+
+    if (this->regex) {
+        return FindRegexInPage(pageNo, finalGlyph);
+    }
 
     int found = -1;
     PageAndOffset fg;

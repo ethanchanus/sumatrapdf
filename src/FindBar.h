@@ -21,6 +21,7 @@ int FindStatusDx(PlatformFont* font, int totalHits, bool capped);
 void StartPickedFindTerm(MainWindow* win, Str term);
 void FindBarSetMatchCaseChecked(MainWindow* win, bool checked);
 void FindBarSetMatchWholeWordChecked(MainWindow* win, bool checked);
+void FindBarSetRegexChecked(MainWindow* win, bool checked);
 
 void ToggleFloatingFindUI(MainWindow* win);
 void FocusFindEditSelectAll(MainWindow* win);

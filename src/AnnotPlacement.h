@@ -17,7 +17,6 @@ bool IsPlacingLineAnnotation(MainWindow*);
 bool IsPlacingPolyLineAnnotation(MainWindow*);
 bool IsPlacingShapeAnnotation(MainWindow*);
 bool IsPlacingInkAnnotation(MainWindow*);
-bool IsPlacingHighlighterAnnotation(MainWindow*);
 Point SnapLineEndpoint(Point start, Point end);
 
 void StartAnnotationPlacement(MainWindow*, int cmdId);
@@ -35,7 +34,6 @@ bool AnnotationPlacementOnMouseMove(MainWindow*, Point, WPARAM);
 bool AnnotationPlacementOnSetCursor(MainWindow*);
 bool AnnotationPlacementOnKeyDown(MainWindow*, WPARAM);
 bool AnnotationPlacementEraseAt(MainWindow*, Point);
-void AnnotationPlacementOnSelectionStop(MainWindow*);
 
 void PaintAnnotationPlacement(MainWindow*, HDC, DisplayModel*);
 bool AnnotationPlacementFillCreate(MainWindow*, AnnotationType, Point&, int&, PointF&, PointF&, AnnotCreateArgs&);

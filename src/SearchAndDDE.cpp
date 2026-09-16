@@ -711,6 +711,35 @@ void FindToggleMatchWholeWord(MainWindow* win) {
     }
 }
 
+// regex mode is only implemented for fixed-layout documents (RegexEngine.h);
+// toggling it for a CHM/markdown webview updates the button but has no effect
+// on its own (JS-backed) find
+void FindToggleRegex(MainWindow* win) {
+    if (!win->IsDocLoaded() || !NeedsFindUI(win)) {
+        return;
+    }
+    DocController* md = BrowserFindCtrl(win);
+    if (!md && !win->AsFixed()) {
+        return;
+    }
+    win->findUseRegex = !win->findUseRegex;
+    if (win->AsFixed()) {
+        win->AsFixed()->textSearch->SetMatchRegex(win->findUseRegex);
+    }
+    FindBarSetRegexChecked(win, win->findUseRegex);
+    if (win->findEdit) {
+        CbEditSetModified(win->findEdit, true);
+    }
+    // re-run the search with the new regex setting
+    if (HasFindText(win)) {
+        if (md) {
+            BrowserFindStartSearch(win, md);
+        } else {
+            FindTextOnThread(win, TextSearch::Direction::Forward, true);
+        }
+    }
+}
+
 void FindSelection(MainWindow* win, TextSearch::Direction direction) {
     if (!win->IsDocLoaded() || !NeedsFindUI(win) || !win->AsFixed()) {
         return;
@@ -823,6 +852,7 @@ struct FindThreadData {
         SetToolbarButtonEnableState(win, CmdFindNext, false);
         SetToolbarButtonEnableState(win, CmdFindToggleMatchCase, false);
         SetToolbarButtonEnableState(win, CmdFindToggleMatchWholeWord, false);
+        SetToolbarButtonEnableState(win, CmdFindToggleRegex, false);
     }
 
     void HideUI(bool success, bool loopedAround) const {
@@ -830,13 +860,19 @@ struct FindThreadData {
         SetToolbarButtonEnableState(win, CmdFindNext, true);
         SetToolbarButtonEnableState(win, CmdFindToggleMatchCase, true);
         SetToolbarButtonEnableState(win, CmdFindToggleMatchWholeWord, true);
+        SetToolbarButtonEnableState(win, CmdFindToggleRegex, true);
 
         if (!success && !loopedAround) {
             // i.e. canceled
             FindBarSetStatus(win, StrL(""));
         } else if (!success && loopedAround) {
-            // keep it compact and consistent with the "n / m" counter
-            FindBarSetStatus(win, StrL("0 / 0"), 0);
+            DisplayModel* dm = win->AsFixed();
+            if (dm && dm->textSearch && dm->textSearch->regex && dm->textSearch->regexError) {
+                FindBarSetStatus(win, Tr("Invalid regular expression"), 0);
+            } else {
+                // keep it compact and consistent with the "n / m" counter
+                FindBarSetStatus(win, StrL("0 / 0"), 0);
+            }
         }
         // else: a match was found; the "n / m" counter (set by UpdateMatchCount
         // after this) is the only feedback - no beep on wrap-around
@@ -962,7 +998,7 @@ void ClearFindMatches(MainWindow* win) {
     win->browserFindTotal = -1;
 }
 
-static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool matchWholeWord);
+static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool matchWholeWord, bool regex);
 
 // Drop find-match / match-count state that only applies to the previous document
 // (tab switch, close-current, reload). Keeps find box text (#5308). If the find
@@ -991,7 +1027,7 @@ void InvalidateFindForDocumentChange(MainWindow* win) {
         return;
     }
     if (win->AsFixed()) {
-        StartFindCount(win, s, win->findMatchCase, win->findMatchWholeWord);
+        StartFindCount(win, s, win->findMatchCase, win->findMatchWholeWord, win->findUseRegex);
         return;
     }
     DocController* md = BrowserFindCtrl(win);
@@ -1024,6 +1060,7 @@ struct CountThreadData {
     Str text;
     bool matchCase = false;
     bool matchWholeWord = false;
+    bool regex = false;
     bool wantMatchList = false; // build findMatches (for all-match painting or the results list)
     bool wantSnippets = false;  // build per-match snippet strings for the results list
     int startPage = 1;          // scan from here (the current page), wrapping around
@@ -1034,13 +1071,14 @@ struct CountThreadData {
     int nFoundSoFar = 0;
     DWORD lastProgressMs = 0;
 
-    CountThreadData(MainWindow* win, EngineBase* engine, Str text, bool matchCase, bool matchWholeWord,
+    CountThreadData(MainWindow* win, EngineBase* engine, Str text, bool matchCase, bool matchWholeWord, bool regex,
                     bool wantMatchList, bool wantSnippets, int startPage, Str rangeSpec, LONG epoch) {
         this->win = win;
         this->engine = engine;
         this->text = str::Dup(text);
         this->matchCase = matchCase;
         this->matchWholeWord = matchWholeWord;
+        this->regex = regex;
         this->wantMatchList = wantMatchList;
         this->wantSnippets = wantSnippets;
         this->startPage = startPage;
@@ -1095,6 +1133,7 @@ static void CountEndTask(CountEndTaskData* d) {
         ctd->text = {};
         win->findCountMatchCase = ctd->matchCase;
         win->findCountMatchWholeWord = ctd->matchWholeWord;
+        win->findCountUseRegex = ctd->regex;
         str::ReplaceWithCopy(&win->findCountRangeText, ctd->rangeSpec);
         win->findCountEngine = ctd->engine;
         win->findCountPositions = *d->positions;
@@ -1125,7 +1164,8 @@ static void CountEndTask(CountEndTaskData* d) {
     if (win->findCountPendingText) {
         Str pending = win->findCountPendingText;
         win->findCountPendingText = {};
-        StartFindCount(win, pending, win->findCountPendingMatchCase, win->findCountPendingMatchWholeWord);
+        StartFindCount(win, pending, win->findCountPendingMatchCase, win->findCountPendingMatchWholeWord,
+                       win->findCountPendingUseRegex);
         str::Free(pending);
     }
 }
@@ -1272,6 +1312,7 @@ static void CountThread(CountThreadData* d) {
         TextSearch ts(engine);
         ts.SetMatchCase(d->matchCase);
         ts.SetMatchWholeWord(d->matchWholeWord);
+        ts.SetMatchRegex(d->regex);
         Vec<bool> allowed;
         if (!ParseFindPageRange(d->rangeSpec, engine->PageCount(), allowed)) {
             VecReset(allowed);
@@ -1388,7 +1429,7 @@ static void AbortCount(MainWindow* win) {
 // scan is already running, remember only the latest request and let the running
 // worker start it when it finishes, so rapid typing never piles up scans and
 // the UI thread never blocks waiting on a scan.
-static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool matchWholeWord) {
+static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool matchWholeWord, bool regex) {
     DisplayModel* dm = win->AsFixed();
     if (!dm) {
         return;
@@ -1416,6 +1457,7 @@ static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool match
         win->findCountPendingText = str::Dup(text);
         win->findCountPendingMatchCase = matchCase;
         win->findCountPendingMatchWholeWord = matchWholeWord;
+        win->findCountPendingUseRegex = regex;
         return;
     }
 
@@ -1427,8 +1469,8 @@ static void StartFindCount(MainWindow* win, Str text, bool matchCase, bool match
     bool wantMatchList = true;
     int epoch = AtomicIntInc(&win->findCountEpoch);
     int startPage = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
-    auto* d = new CountThreadData(win, engine, text, matchCase, matchWholeWord, wantMatchList, wantSnippets, startPage,
-                                  win->findPageRangeText, epoch);
+    auto* d = new CountThreadData(win, engine, text, matchCase, matchWholeWord, regex, wantMatchList, wantSnippets,
+                                  startPage, win->findPageRangeText, epoch);
     win->findCountThread = nullptr;
     auto fn = MkFunc0<CountThreadData>(CountThread, d);
     win->findCountThread = StartThread(fn, StrL("FindCountThread"));
@@ -1469,7 +1511,8 @@ static void UpdateMatchCount(MainWindow* win, Str text) {
     ApplyFindPageRange(win);
     bool cacheHit = win->findCountValid && win->findCountText && str::Eq(win->findCountText, text) &&
                     win->findCountMatchCase == win->findMatchCase &&
-                    win->findCountMatchWholeWord == win->findMatchWholeWord && win->findCountEngine == engine &&
+                    win->findCountMatchWholeWord == win->findMatchWholeWord &&
+                    win->findCountUseRegex == win->findUseRegex && win->findCountEngine == engine &&
                     str::Eq(win->findCountRangeText, win->findPageRangeText) &&
                     (!wantMatchList || (wantSnippets ? win->findCountHasSnippets : len(win->findMatches) > 0));
     if (cacheHit) {
@@ -1478,7 +1521,7 @@ static void UpdateMatchCount(MainWindow* win, Str text) {
         ShowMatchCount(win);
         FindWindowRefreshResults(win, false);
     } else {
-        StartFindCount(win, text, win->findMatchCase, win->findMatchWholeWord);
+        StartFindCount(win, text, win->findMatchCase, win->findMatchWholeWord, win->findUseRegex);
     }
 }
 

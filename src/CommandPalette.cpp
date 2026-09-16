@@ -2027,6 +2027,10 @@ static TempStr UpdateCommandNameTemp(MainWindow* win, int cmdId, Str s) {
             isToggle = true;
             newIsOn = !win->findMatchWholeWord;
         } break;
+        case CmdFindToggleRegex: {
+            isToggle = true;
+            newIsOn = !win->findUseRegex;
+        } break;
         case CmdFavoriteToggle: {
             isToggle = true;
             newIsOn = !gSettings->showFavorites;

@@ -9843,9 +9843,7 @@ Str EngineMupdfLoadAnnotAttachment(EngineBase* engine, int objNum) {
 }
 
 // if an elements fully obscures another, remove it from the list
-// padding (in page units) grows each annotation's bounds
-Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, float padding,
-                                          Annotation* preferredAnnot) {
+Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* preferredAnnot) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf->pdfdoc) {
         return nullptr;
@@ -9860,7 +9858,6 @@ Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF
     for (auto& annot : pi->annotations) {
         auto& atp = annot->type;
         RectF bounds = annot->bounds;
-        bounds.Inflate(padding, padding);
         if (!bounds.Contains(pos)) {
             continue;
         }
@@ -10100,36 +10097,6 @@ NO_INLINE void MarkNotificationAsModified(EngineMupdf* e, Annotation* annot, Ann
     }
 }
 
-// pdf_bound_annot(), except ink: mupdf pads its /Rect by line width + 6pt, so
-// bound the stroke itself. Must be called inside fz_try.
-RectF PdfAnnotBounds(fz_context* ctx, pdf_annot* a) {
-    fz_rect fallback = pdf_bound_annot(ctx, a);
-    if (pdf_annot_type(ctx, a) != PDF_ANNOT_INK) {
-        return ToRectF(fallback);
-    }
-    fz_rect r = fallback;
-    bool first = true;
-    int nStrokes = pdf_annot_ink_list_count(ctx, a);
-    for (int i = 0; i < nStrokes; i++) {
-        int nv = pdf_annot_ink_list_stroke_count(ctx, a, i);
-        for (int k = 0; k < nv; k++) {
-            fz_point p = pdf_annot_ink_list_stroke_vertex(ctx, a, i, k);
-            if (first) {
-                r = fz_make_rect(p.x, p.y, p.x, p.y);
-                first = false;
-                continue;
-            }
-            r = fz_include_point_in_rect(r, p);
-        }
-    }
-    if (first) {
-        return ToRectF(fallback);
-    }
-
-    // the ink list vertices are already in page space
-    return ToRectF(fz_expand_rect(r, pdf_annot_border(ctx, a) / 2));
-}
-
 // creates Annotation wrapper around pdf_annot
 Annotation* MakeAnnotationWrapper(EngineMupdf* engine, pdf_annot* annot, int pageNo) {
     ReportIf(pageNo < 1);
@@ -10137,12 +10104,12 @@ Annotation* MakeAnnotationWrapper(EngineMupdf* engine, pdf_annot* annot, int pag
     ScopedRecursiveMutex cs(&engine->docLock);
 
     AnnotationType typ = AnnotationType::Unknown;
-    RectF bounds;
+    fz_rect bounds;
 
     fz_context* ctx = engine->Ctx();
     fz_try(ctx) {
         auto tp = pdf_annot_type(ctx, annot);
-        bounds = PdfAnnotBounds(ctx, annot);
+        bounds = pdf_bound_annot(ctx, annot);
         typ = AnnotationTypeFromPdfAnnot(tp);
     }
     fz_catch(ctx) {
@@ -10159,7 +10126,7 @@ Annotation* MakeAnnotationWrapper(EngineMupdf* engine, pdf_annot* annot, int pag
     res->engine = engine;
     res->pageNo = pageNo;
     res->pdfannot = annot;
-    res->bounds = bounds;
+    res->bounds = ToRectF(bounds);
     res->type = typ;
     return res;
 }

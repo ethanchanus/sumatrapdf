@@ -33,6 +33,7 @@ extern const char* gIconClose;
 extern const char* gIconArrowsDiagonal;
 extern const char* gIconArrowsDiagonalMinimize;
 extern const char* gIconMatchWholeWord;
+extern const char* gIconRegex;
 extern const char* gIconHomeList;
 extern const char* gIconHomeThumbnails;
 extern const char* gIconPin;

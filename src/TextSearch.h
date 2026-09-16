@@ -1,6 +1,10 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
+struct RegexProgram;
+
+int FoldCaseForSearch(int c);
+
 struct TextSearch : public TextSelection {
     enum class Direction : bool {
         Backward = false,
@@ -12,6 +16,7 @@ struct TextSearch : public TextSelection {
 
     void SetMatchCase(bool newMatchCase);
     void SetMatchWholeWord(bool wholeWord);
+    void SetMatchRegex(bool newRegex);
     void SetDirection(Direction direction);
     void SetPageRange(int first, int last);
     void SetAllowedPages(const Vec<bool>& allowed);
@@ -52,6 +57,13 @@ struct TextSearch : public TextSelection {
     bool matchWordStart = false;
     bool matchWordEnd = false;
 
+    // when set, findText is a regular expression (see RegexEngine.h for the
+    // supported syntax) instead of plain text
+    bool regex = false;
+    // true when findText failed to compile as a regex (only meaningful when
+    // `regex` is set); the search then finds nothing rather than crashing
+    bool regexError = false;
+
     void SetText(Str text);
     bool FindTextInPage(int pageNo, PageAndOffset* finalGlyph);
     void EnsureFullyLaidOut();
@@ -70,4 +82,11 @@ struct TextSearch : public TextSelection {
     Vec<bool> pagesToSkip;
     // empty = all pages. Otherwise pageAllowed[i] is page i+1 (issue #5694).
     Vec<bool> pageAllowed;
+
+    // compiled-regex cache: valid for `regexProgramFor`, rebuilt when findText
+    // (or the regex toggle) changes
+    RegexProgram* regexProgram = nullptr;
+    Str regexProgramFor;
+    void EnsureRegexCompiled();
+    bool FindRegexInPage(int pageNo, PageAndOffset* finalGlyph);
 };

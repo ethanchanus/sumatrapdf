@@ -103,6 +103,20 @@ const char* gIconMatchWholeWord =
   <path d="M3 16v3h18v-3" />
 </svg>)";
 
+// "regex": a "(.*)" glyph -- parentheses around a dot and an asterisk --
+// suggesting the find box's text is a regular expression. Custom icon drawn
+// in the tabler stroke style.
+const char* gIconRegex =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M8 4c-2 2 -2 14 0 16" />
+  <path d="M16 4c2 2 2 14 0 16" />
+  <line x1="10.6" y1="11.5" x2="13.4" y2="11.5" />
+  <line x1="11" y1="9.8" x2="13" y2="13.2" />
+  <line x1="13" y1="9.8" x2="11" y2="13.2" />
+  <circle cx="12" cy="16" r="0.6" fill="currentColor" stroke="none" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/main/icons/outline/zoom-in.svg
 const char* gIconZoomIn =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">

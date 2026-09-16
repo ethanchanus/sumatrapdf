@@ -11,7 +11,6 @@
 
 #include "Theme.h"
 #include "FilterHighlightDraw.h"
-#include "FilterUtil.h"
 
 // approximate "is this UTF-8 byte part of a word character?": any byte >= 0x80
 // is part of a multi-byte rune (CJK / Cyrillic / accented Latin -> treat as a
@@ -37,13 +36,13 @@ void DrawMaybeHighlightedText(Gfx* gfx, Rect rc, Str text, const StrVec& filterW
     memset(hl, 0, textLen);
     for (int w = 0; w < nWords; w++) {
         Str word = filterWords[w];
+        int wordLen = word.len;
         if (len(word) == 0) {
             continue;
         }
         Str rest = text;
         while (rest) {
-            int wordLen = 0;
-            int idx = FilterIndexOf(rest, word, &wordLen);
+            int idx = str::IndexOfI(rest, word);
             if (idx < 0) {
                 break;
             }
@@ -244,13 +243,13 @@ void DrawTreeItemFilterHighlight(Gfx* gfx, Rect labelRect, Str text, const StrVe
     memset(hl, 0, textLen);
     for (int w = 0; w < len(filterWords); w++) {
         Str word = filterWords[w];
-        if (len(word) == 0) {
+        int wordLen = word.len;
+        if (wordLen == 0) {
             continue;
         }
         Str rest = text;
         while (len(rest) > 0) {
-            int wordLen = 0;
-            int idx = FilterIndexOf(rest, word, &wordLen);
+            int idx = str::IndexOfI(rest, word);
             if (idx < 0) {
                 break;
             }

@@ -1233,6 +1233,7 @@
     <ClInclude Include="..\src\ReadingAutoScroll.h" />
     <ClInclude Include="..\src\ReadingBar.h" />
     <ClInclude Include="..\src\RefHover.h" />
+    <ClInclude Include="..\src\RegexEngine.h" />
     <ClInclude Include="..\src\RegistryPreview.h" />
     <ClInclude Include="..\src\RegistrySearchFilter.h" />
     <ClInclude Include="..\src\RenderCache.h" />
@@ -1474,6 +1475,7 @@
     <ClCompile Include="..\src\RefHoverShow.cpp" />
     <ClCompile Include="..\src\RefHoverText.cpp" />
     <ClCompile Include="..\src\RefHoverTextDetect.cpp" />
+    <ClCompile Include="..\src\RegexEngine.cpp" />
     <ClCompile Include="..\src\RegistryInstaller.cpp" />
     <ClCompile Include="..\src\RegistryPreview.cpp" />
     <ClCompile Include="..\src\RegistrySearchFilter.cpp" />

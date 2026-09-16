@@ -24,7 +24,6 @@
 #include "gui/GuiColors.h"
 #include "gui/VirtCtrl.h"
 
-#include "SumatraConfig.h"
 #include "Settings.h"
 #include "AppSettings.h"
 #include "Commands.h"
@@ -87,18 +86,6 @@ Str TtsGetVoiceId() {
 void TtsSetSpeed(float) {}
 float TtsGetSpeed() {
     return 1.0f;
-}
-bool TtsOnEngineCrash(void*) {
-    return false;
-}
-bool TtsTakeEngineCrash() {
-    return false;
-}
-bool TtsEngineCrashed() {
-    return false;
-}
-bool TtsTestEngineCrash() {
-    return false;
 }
 
 #else
@@ -200,92 +187,10 @@ static ULONG gSapiLastWordPos = 0;
 static ULONG gSapiQueuedStreamNum = 0;
 static WStr gSapiQueuedText;
 
-// dirs of the voice engine DLLs we loaded; read by the crash handler, so no heap
-constexpr int kMaxSapiEngineDirs = 8;
-static WCHAR gSapiEngineDirs[kMaxSapiEngineDirs][MAX_PATH];
-static AtomicInt gSapiEngineDirCount = 0;
-// set by the crash handler after it ended a crashed voice engine thread
-static AtomicBool gSapiCrashed = 0;
-static bool gSapiCrashTaken = false;
-
 static void SapiClearQueued() {
     gSapiQueuedStreamNum = 0;
     wstr::Free(gSapiQueuedText);
     gSapiQueuedText = {};
-}
-
-// "C:\dir\file.dll" => "C:\dir"
-static void CutFileName(WCHAR* path) {
-    WCHAR* sep = wcsrchr(path, L'\\');
-    if (sep) {
-        *sep = 0;
-    }
-}
-
-static void SapiAddEngineDir(const WCHAR* dir) {
-    int count = AtomicIntGet(&gSapiEngineDirCount);
-    for (int i = 0; i < count; i++) {
-        if (_wcsicmp(gSapiEngineDirs[i], dir) == 0) {
-            return;
-        }
-    }
-    if (count >= kMaxSapiEngineDirs) {
-        return;
-    }
-    // string before count: the crash handler reads without a lock
-    wcscpy_s(gSapiEngineDirs[count], MAX_PATH, dir);
-    AtomicIntSet(&gSapiEngineDirCount, count + 1);
-}
-
-// so a crash in the current voice's engine can end only its thread. Windows
-// voices are skipped: their dir holds system DLLs every thread runs
-static void SapiRememberEngineDir() {
-    ISpObjectToken* token = nullptr;
-    if (!gSapiVoice || FAILED(gSapiVoice->GetVoice(&token)) || !token) {
-        return;
-    }
-    WCHAR* clsid = nullptr;
-    HRESULT hr = token->GetStringValue(L"CLSID", &clsid);
-    token->Release();
-    if (FAILED(hr) || !clsid) {
-        return;
-    }
-
-    WCHAR key[MAX_PATH];
-    swprintf_s(key, L"CLSID\\%s\\InprocServer32", clsid);
-    CoTaskMemFree(clsid);
-    WCHAR path[MAX_PATH];
-    DWORD cb = sizeof(path);
-    if (RegGetValueW(HKEY_CLASSES_ROOT, key, nullptr, RRF_RT_REG_SZ, nullptr, path, &cb) != ERROR_SUCCESS) {
-        return;
-    }
-
-    WCHAR winDir[MAX_PATH];
-    UINT n = GetWindowsDirectoryW(winDir, MAX_PATH);
-    if (n > 0 && n < MAX_PATH && _wcsnicmp(path, winDir, n) == 0) {
-        return;
-    }
-    CutFileName(path);
-    SapiAddEngineDir(path);
-}
-
-// SAPI may wait on locks the ended engine thread held: never call it again
-// (gSapiVoice is leaked on purpose)
-static bool SapiCrashed() {
-    if (!AtomicBoolGet(&gSapiCrashed)) {
-        return false;
-    }
-    if (gSapiVoice) {
-        log(StrL("SapiCrashed: voice engine thread crashed, SAPI disabled\n"));
-        gSapiVoice = nullptr;
-        SapiClearQueued();
-        gSapiStreamNum = 0;
-        gSapiLastWordPos = 0;
-        if (gTtsBackend == TtsBackend::Sapi) {
-            gTtsActive = false;
-        }
-    }
-    return true;
 }
 
 // Voice token lookup and metadata
@@ -374,7 +279,7 @@ static Str SapiGetVoiceLanguage(ISpObjectToken* token) {
 }
 
 static void SapiSetNotify() {
-    if (SapiCrashed() || !gSapiVoice) {
+    if (!gSapiVoice) {
         return;
     }
 
@@ -399,7 +304,7 @@ static void SapiSetNotify() {
 // SAPI rate is -10 .. 10 on a logarithmic scale where 10 is ~3x and -10 ~1/3x,
 // so rate = 10 * log3(speed)
 static void SapiApplySpeed() {
-    if (SapiCrashed() || !gSapiVoice) {
+    if (!gSapiVoice) {
         return;
     }
     double rate = 10.0 * log((double)gTtsSpeed) / log(3.0);
@@ -408,9 +313,6 @@ static void SapiApplySpeed() {
 }
 
 static bool SapiInit() {
-    if (SapiCrashed()) {
-        return false;
-    }
     if (gSapiVoice) {
         return true;
     }
@@ -442,16 +344,12 @@ static bool SapiInit() {
         }
     }
 
-    SapiRememberEngineDir();
     SapiApplySpeed();
     SapiSetNotify();
     return true;
 }
 
 static void SapiRelease() {
-    if (SapiCrashed()) {
-        return;
-    }
     if (gSapiVoice) {
         gSapiVoice->Speak(nullptr, SPF_PURGEBEFORESPEAK, nullptr);
         gSapiVoice->Release();
@@ -546,11 +444,7 @@ static bool SapiSetVoiceById(Str voiceId) {
         token->Release();
     }
 
-    if (FAILED(hr)) {
-        return false;
-    }
-    SapiRememberEngineDir();
-    return true;
+    return SUCCEEDED(hr);
 }
 
 static void SapiClearEvent(SPEVENT* eventItem) {
@@ -587,7 +481,7 @@ static void SapiClearEvent(SPEVENT* eventItem) {
 }
 
 static void SapiProcessEvents() {
-    if (SapiCrashed() || !gSapiVoice) {
+    if (!gSapiVoice) {
         return;
     }
 
@@ -673,7 +567,7 @@ static bool SapiQueue(WStr textW) {
 }
 
 static void SapiStop() {
-    if (!SapiCrashed() && gSapiVoice) {
+    if (gSapiVoice) {
         gSapiVoice->Speak(nullptr, SPF_ASYNC | SPF_PURGEBEFORESPEAK, nullptr);
     }
 
@@ -1731,66 +1625,6 @@ void TtsRelease() {
 
     str::Free(gTtsVoiceId);
     gTtsVoiceId = {};
-}
-
-// crash handler callback, on the crashed thread: no heap, no locks
-bool TtsOnEngineCrash(void* faultAddr) {
-    HMODULE mod = nullptr;
-    DWORD flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
-    if (!GetModuleHandleExW(flags, (LPCWSTR)faultAddr, &mod)) {
-        return false;
-    }
-    WCHAR dir[MAX_PATH];
-    DWORD n = GetModuleFileNameW(mod, dir, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) {
-        return false;
-    }
-    CutFileName(dir);
-
-    int count = AtomicIntGet(&gSapiEngineDirCount);
-    for (int i = 0; i < count; i++) {
-        if (_wcsicmp(gSapiEngineDirs[i], dir) != 0) {
-            continue;
-        }
-        AtomicBoolSet(&gSapiCrashed, true);
-        TtsPostNotifyMsg();
-        return true;
-    }
-    return false;
-}
-
-// true once, on the UI thread, after a voice engine crash
-bool TtsTakeEngineCrash() {
-    if (!SapiCrashed() || gSapiCrashTaken) {
-        return false;
-    }
-    gSapiCrashTaken = true;
-    return true;
-}
-
-bool TtsEngineCrashed() {
-    return AtomicBoolGet(&gSapiCrashed);
-}
-
-static DWORD WINAPI TtsTestCrashThread(void* /*data*/) {
-    CrashMe();
-    return 0;
-}
-
-// -for-testing: crash like a voice engine, on a thread started outside our exe
-// (SHCreateThread's starts in shcore) with our dir registered as an engine's
-bool TtsTestEngineCrash() {
-    if (!gForTesting) {
-        return false;
-    }
-    WCHAR dir[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, dir, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) {
-        return false;
-    }
-    CutFileName(dir);
-    SapiAddEngineDir(dir);
-    return SHCreateThread(TtsTestCrashThread, nullptr, 0, nullptr) != FALSE;
 }
 
 #endif // COMPILER_MINGW
@@ -3527,22 +3361,7 @@ static void ReadAloudOnQueuedStarted(WindowTab* tab) {
 }
 
 // Promote a prefetched chunk and start the next prefetch.
-// a voice engine thread crashed and was ended: stop reading, forget that voice
-static void ReadAloudOnEngineCrash() {
-    if (!TtsTakeEngineCrash()) {
-        return;
-    }
-    WindowTab* tab = GetReadAloudSourceTab();
-    ReadAloudPlaybackStop();
-    ReadAloudSaveVoicePref({});
-    TtsSetVoiceById(StrL(""));
-    if (tab && tab->win) {
-        ReadAloudShowNotif(tab, Tr("Read aloud voice crashed and was turned off"));
-    }
-}
-
 void ReadAloudAfterTtsEvents() {
-    ReadAloudOnEngineCrash();
     WindowTab* tab = GetReadAloudSourceTab();
     if (!tab) {
         return;

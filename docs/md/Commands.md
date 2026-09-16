@@ -216,7 +216,7 @@ CmdFindAnnotation,,Find Annotation,"opens the floating annotation list, where yo
 CmdCreateAnnotFileAttachment,,Create File Attachment Annotation,"click to place, like Stamp/Caret; Esc cancels, ver 3.7+"
 CmdCreateAnnotFreeText,,Create Free Text Annotation,
 CmdCreateAnnotHighlight,"a, A",Create Highlight Annotation,"`A` (`Shift + A`) is `CmdCreateAnnotHighlight openedit`: also turns on Edit PDF mode"
-CmdAnnotationHighlightBrush,,Highlighter,"a mode: every text selection is highlighted, until Esc or Enter. Text already selected is highlighted right away, ver 3.7+"
+CmdAnnotationHighlightBrush,,Highlight with Brush,"a freehand highlighter: drag to paint a marker stroke anywhere on the page, no text selection needed. Release finishes, Esc cancels. Saved as an ink annotation in HighlightColor, ver 3.7+"
 CmdCreateAnnotInk,,Create Ink Annotation,"drag to paint; release commits the stroke and leaves the tool on. Esc or closing the hint leaves the tool, ver 3.7+"
 CmdCreateAnnotLine,,Create Line Annotation,
 CmdCreateAnnotLink,,Create Link Annotation,
@@ -398,6 +398,7 @@ CmdDebugToggleCacheInfo,,Debug: Toggle Cache Info,
 CmdDebugToggleRtl,,Debug: Toggle Rtl,
 CmdToggleImages,,Toggle Show Images,"Outline the images on the page, like the link outlines. A debug aid: it lasts for the session and is not saved in the settings, ver 3.7+"
 CmdDebugShowFitContentArea,,Debug: Show Fit Content Area,"outlines in red the area Fit Content zoom would fit to (whole page if no content box was detected), without changing the zoom, ver 3.7+"
+CmdFindToggleRegex,,Find: Toggle Regex,
 CmdNone,,Do nothing,
 ```
 
